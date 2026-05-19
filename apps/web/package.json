@@ -32,8 +32,9 @@
     "vite": "^7.3.3"
   },
   "dependencies": {
-    "@xyflow/svelte": "^1.5.2",
     "@lucide/svelte": "^1.14.0",
-    "nanoid": "^5.1.11"
+    "@xyflow/svelte": "^1.5.2",
+    "nanoid": "^5.1.11",
+    "svelte-sonner": "1.1.1"
   }
 }
