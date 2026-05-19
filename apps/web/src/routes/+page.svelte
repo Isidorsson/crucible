@@ -12,18 +12,24 @@
   );
 </script>
 
+<svelte:head>
+  <title>Crucible — System Design Simulator</title>
+</svelte:head>
+
+<a href="#canvas" class="skip-link">Skip to canvas</a>
+
 <div class="flex h-screen flex-col">
   <header class="flex items-center gap-2 border-b border-line bg-panel px-4 py-2">
-    <Flame class="h-5 w-5 text-err" />
-    <span class="font-mono text-sm tracking-widest text-ink">CRUCIBLE</span>
+    <Flame class="h-5 w-5 text-err" aria-hidden="true" />
+    <h1 class="font-mono text-sm tracking-widest text-ink" translate="no">CRUCIBLE</h1>
     <span class="text-xs text-muted">system design simulator</span>
   </header>
 
   <ControlBar />
 
-  <div class="flex flex-1 overflow-hidden">
+  <main class="flex flex-1 overflow-hidden" aria-label="Editor">
     <Palette />
     <Canvas onSelect={(id) => (selectedId = id)} />
     <Inspector {selected} />
-  </div>
+  </main>
 </div>

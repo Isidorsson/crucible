@@ -3,14 +3,15 @@
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
 
-  // Speed presets. "max" sends Infinity (the worker caps via TICK_BUDGET_MS).
-  const SPEEDS: { label: string; value: number }[] = [
-    { label: '0.25x', value: 0.25 },
-    { label: '1x', value: 1 },
-    { label: '2x', value: 2 },
-    { label: '5x', value: 5 },
-    { label: '100x', value: 100 },
-    { label: 'max', value: 1e9 }
+  // Speed presets. "max" sends a large finite multiplier (1e9); worker
+  // still caps each tick to TICK_BUDGET_MS so the UI stays responsive.
+  const SPEEDS: { label: string; aria: string; value: number }[] = [
+    { label: '0.25x', aria: 'Quarter speed', value: 0.25 },
+    { label: '1x', aria: 'Real time', value: 1 },
+    { label: '2x', aria: '2x speed', value: 2 },
+    { label: '5x', aria: '5x speed', value: 5 },
+    { label: '100x', aria: '100x speed', value: 100 },
+    { label: 'max', aria: 'Maximum speed', value: 1e9 }
   ];
 
   // Logarithmic RPS slider: slider 0..100 maps to 1..1_000_000 rps.
@@ -24,6 +25,8 @@
     const max = Math.log10(1_000_000);
     return ((Math.log10(Math.max(1, rps)) - min) / (max - min)) * 100;
   }
+
+  const numberFmt = new Intl.NumberFormat();
 
   let sliderValue = $state<number>(rpsToSlider(100));
   const globalRps = $derived(sliderToRps(sliderValue));
@@ -51,77 +54,111 @@
     else if (sim.state === 'paused') sim.resume();
     else sim.start();
   }
+
+  const playLabel = $derived(
+    sim.state === 'running' ? 'Pause' : sim.state === 'paused' ? 'Resume' : 'Run'
+  );
 </script>
 
 <div
-  class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2 font-mono text-xs text-ink"
+  class="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2 font-mono text-xs text-ink"
+  role="toolbar"
+  aria-label="Simulation controls"
 >
   <button
+    type="button"
     onclick={onPlayPause}
-    class="flex items-center gap-1.5 rounded border border-line bg-bg px-3 py-1.5 hover:border-accent"
+    aria-label="{playLabel} simulation"
+    class="flex items-center gap-1.5 rounded border border-line bg-bg px-3 py-1.5
+           transition-colors hover:border-accent
+           focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
   >
     {#if sim.state === 'running'}
-      <Pause class="h-3.5 w-3.5" /> Pause
+      <Pause class="h-3.5 w-3.5" aria-hidden="true" /> Pause
     {:else}
-      <Play class="h-3.5 w-3.5" /> {sim.state === 'paused' ? 'Resume' : 'Run'}
+      <Play class="h-3.5 w-3.5" aria-hidden="true" /> {playLabel}
     {/if}
   </button>
 
   <button
+    type="button"
     onclick={() => sim.stop()}
-    class="flex items-center gap-1.5 rounded border border-line bg-bg px-3 py-1.5 hover:border-err"
+    aria-label="Stop simulation"
+    class="flex items-center gap-1.5 rounded border border-line bg-bg px-3 py-1.5
+           transition-colors hover:border-err
+           focus-visible:border-err focus-visible:ring-2 focus-visible:ring-err"
   >
-    <Square class="h-3.5 w-3.5" /> Stop
+    <Square class="h-3.5 w-3.5" aria-hidden="true" /> Stop
   </button>
 
-  <div class="mx-2 h-5 w-px bg-line"></div>
+  <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
 
-  <div class="flex items-center gap-1.5">
-    <Gauge class="h-3.5 w-3.5 text-muted" />
-    <span class="text-muted">speed</span>
+  <div
+    class="flex items-center gap-1.5"
+    role="radiogroup"
+    aria-label="Simulation speed"
+  >
+    <Gauge class="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+    <span class="text-muted" aria-hidden="true">speed</span>
     {#each SPEEDS as s}
+      {@const active = sim.speed === s.value}
       <button
+        type="button"
+        role="radio"
+        aria-checked={active}
+        aria-label={s.aria}
         onclick={() => onSpeed(s.value)}
-        class="rounded px-2 py-1 {sim.speed === s.value
-          ? 'bg-accent text-bg'
-          : 'border border-line hover:border-accent'}"
+        class="rounded px-2 py-1 transition-colors
+               focus-visible:ring-2 focus-visible:ring-accent
+               {active ? 'bg-accent text-bg' : 'border border-line hover:border-accent'}"
       >
         {s.label}
       </button>
     {/each}
   </div>
 
-  <div class="mx-2 h-5 w-px bg-line"></div>
+  <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
 
-  <div class="flex flex-1 items-center gap-2">
-    <Activity class="h-3.5 w-3.5 text-muted" />
-    <span class="text-muted">scale</span>
+  <div class="flex min-w-0 flex-1 items-center gap-2">
+    <Activity class="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+    <label for="rps-scale" class="text-muted">scale</label>
     <input
+      id="rps-scale"
+      name="rps-scale"
       type="range"
       min="0"
       max="100"
       step="0.5"
       bind:value={sliderValue}
-      class="flex-1 accent-accent"
+      aria-valuetext="{numberFmt.format(globalRps)} requests per second"
+      class="flex-1 accent-accent focus-visible:ring-2 focus-visible:ring-accent"
     />
-    <span class="w-20 text-right tabular-nums">{globalRps.toLocaleString()} rps</span>
+    <span class="w-24 text-right tabular-nums" aria-hidden="true">
+      {numberFmt.format(globalRps)} rps
+    </span>
   </div>
 
-  <div class="mx-2 h-5 w-px bg-line"></div>
+  <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
 
   <button
+    type="button"
     onclick={() => (design.seed = Math.floor(Math.random() * 1e9))}
-    class="flex items-center gap-1.5 rounded border border-line bg-bg px-2.5 py-1.5 hover:border-accent"
-    title="Reseed RNG"
+    aria-label="Reseed RNG, current seed {design.seed}"
+    class="flex items-center gap-1.5 rounded border border-line bg-bg px-2.5 py-1.5
+           transition-colors hover:border-accent
+           focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
   >
-    <RotateCcw class="h-3.5 w-3.5" /> seed: {design.seed}
+    <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />
+    seed:&nbsp;<span class="tabular-nums">{design.seed}</span>
   </button>
 
-  {#if sim.snapshot}
-    <div class="ml-auto flex gap-3 text-muted">
-      <span>born <span class="text-ink tabular-nums">{sim.snapshot.born}</span></span>
-      <span>done <span class="text-ok tabular-nums">{sim.snapshot.completed}</span></span>
-      <span>fail <span class="text-err tabular-nums">{sim.snapshot.failed}</span></span>
-    </div>
-  {/if}
+  <div class="ml-auto" aria-live="polite" aria-atomic="false">
+    {#if sim.snapshot}
+      <div class="flex gap-3 text-muted">
+        <span>born <span class="text-ink tabular-nums">{numberFmt.format(sim.snapshot.born)}</span></span>
+        <span>done <span class="text-ok tabular-nums">{numberFmt.format(sim.snapshot.completed)}</span></span>
+        <span>fail <span class="text-err tabular-nums">{numberFmt.format(sim.snapshot.failed)}</span></span>
+      </div>
+    {/if}
+  </div>
 </div>

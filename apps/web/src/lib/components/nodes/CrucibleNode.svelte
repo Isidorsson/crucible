@@ -23,21 +23,33 @@
     if (rps < 1_000_000) return `${(rps / 1_000).toFixed(1)}k`;
     return `${(rps / 1_000_000).toFixed(1)}M`;
   }
+
+  const ariaSummary = $derived.by(() => {
+    if (!metrics) return `${entry.label}, idle`;
+    return (
+      `${entry.label}, ${fmtRate(metrics.throughput)} requests per second, ` +
+      `p99 latency ${fmtLatency(metrics.p99)}, ${metrics.inFlight} in flight` +
+      (metrics.faulted ? ', faulted' : '')
+    );
+  });
 </script>
 
 <div
-  class="rounded-lg border bg-panel px-3 py-2 font-mono text-xs shadow-lg ring-1 transition
+  role="group"
+  aria-label={ariaSummary}
+  class="rounded-lg border bg-panel px-3 py-2 font-mono text-xs shadow-lg ring-1
+         transition-colors
          {selected ? 'ring-accent' : 'ring-line'}
          {metrics?.faulted ? 'border-err' : 'border-line'}"
   style="min-width: 180px;"
 >
   <Handle type="target" position={Position.Left} class="!bg-accent" />
 
-  <div class="flex items-center gap-2 border-b border-line pb-1.5 mb-1.5">
-    <entry.icon class="h-4 w-4 text-accent" />
-    <span class="text-ink font-semibold tracking-wide">{entry.label}</span>
+  <div class="mb-1.5 flex items-center gap-2 border-b border-line pb-1.5">
+    <entry.icon class="h-4 w-4 text-accent" aria-hidden="true" />
+    <span class="font-semibold tracking-wide text-ink">{entry.label}</span>
     {#if metrics?.faulted}
-      <AlertTriangle class="ml-auto h-3.5 w-3.5 text-err" />
+      <AlertTriangle class="ml-auto h-3.5 w-3.5 text-err" aria-hidden="true" />
     {/if}
   </div>
 
@@ -45,26 +57,28 @@
     {#if metrics}
       <div class="flex justify-between">
         <span>rps</span>
-        <span class="text-ink">{fmtRate(metrics.throughput)}</span>
+        <span class="text-ink tabular-nums">{fmtRate(metrics.throughput)}</span>
       </div>
       <div class="flex justify-between">
         <span>p50 / p99</span>
-        <span class="text-ink">{fmtLatency(metrics.p50)} / {fmtLatency(metrics.p99)}</span>
+        <span class="text-ink tabular-nums">
+          {fmtLatency(metrics.p50)} / {fmtLatency(metrics.p99)}
+        </span>
       </div>
       <div class="flex justify-between">
         <span>in-flight</span>
-        <span class="text-ink">{metrics.inFlight}</span>
+        <span class="text-ink tabular-nums">{metrics.inFlight}</span>
       </div>
       {#if metrics.queueDepth > 0}
         <div class="flex justify-between">
           <span>queue</span>
-          <span class="text-warn">{metrics.queueDepth}</span>
+          <span class="text-warn tabular-nums">{metrics.queueDepth}</span>
         </div>
       {/if}
       {#if metrics.errorRate > 0}
         <div class="flex justify-between">
           <span>err rate</span>
-          <span class="text-err">{(metrics.errorRate * 100).toFixed(1)}%</span>
+          <span class="text-err tabular-nums">{(metrics.errorRate * 100).toFixed(1)}%</span>
         </div>
       {/if}
     {:else}
