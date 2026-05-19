@@ -39,11 +39,16 @@ const SNAPSHOT_INTERVAL_MS = 33;
 const TICK_BUDGET_MS = 12;
 
 async function bootWasm(): Promise<void> {
-  // wasm_exec.js exposes `Go` on globalThis. We import it via a script tag
-  // injected by the main app and rely on it being present here.
-  // Workers cannot use document.createElement; importScripts works for the
-  // classic Go runtime but not for ES modules. We use fetch + instantiate.
-  importScripts('/wasm_exec.js');
+  // Vite spawns this as a module Worker, which forbids importScripts().
+  // Load wasm_exec.js by fetching its source and running it through
+  // indirect eval — `(0, eval)(text)` evaluates in the worker's global
+  // scope, so the `Go` constructor lands on globalThis just like a
+  // classic <script> tag would have done.
+  const execResp = await fetch('/wasm_exec.js');
+  if (!execResp.ok) throw new Error(`fetch /wasm_exec.js failed: ${execResp.status}`);
+  const execText = await execResp.text();
+  (0, eval)(execText);
+
   const go = new Go();
   const resp = await fetch('/sim.wasm');
   if (!resp.ok) throw new Error(`fetch /sim.wasm failed: ${resp.status}`);
