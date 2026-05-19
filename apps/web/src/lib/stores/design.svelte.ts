@@ -16,11 +16,16 @@ function createDesignStore() {
   let edges = $state<Edge[]>([]);
   let seed = $state<number>(1);
 
+  // dragHandle scopes node-move drags to the header strip in CrucibleNode,
+  // freeing the rest of the body to start a connection in Loose mode.
+  const DRAG_HANDLE = '.node-drag-handle';
+
   function addNode(kind: NodeKind, position: { x: number; y: number }) {
     const entry = CATALOG_BY_KIND[kind];
     const node: Node<CrucibleNodeData> = {
       id: nanoid(8),
       type: 'crucible',
+      dragHandle: DRAG_HANDLE,
       position,
       data: {
         kind,
@@ -60,6 +65,7 @@ function createDesignStore() {
     const copy: Node<CrucibleNodeData> = {
       ...src,
       id: nanoid(8),
+      dragHandle: DRAG_HANDLE,
       position: { x: src.position.x + 40, y: src.position.y + 40 },
       data: { ...src.data, props: { ...src.data.props } },
       selected: false
@@ -84,6 +90,7 @@ function createDesignStore() {
       return {
         id,
         type: 'crucible',
+        dragHandle: DRAG_HANDLE,
         position: { x: anchor.x + tn.dx, y: anchor.y + tn.dy },
         data: {
           kind: tn.kind,

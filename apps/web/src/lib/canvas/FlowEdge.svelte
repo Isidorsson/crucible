@@ -3,22 +3,35 @@
     BaseEdge,
     EdgeLabel,
     getBezierPath,
+    useInternalNode,
     type EdgeProps
   } from '@xyflow/svelte';
+  import { untrack } from 'svelte';
   import { sim } from '$lib/stores/sim.svelte';
+  import { getEdgeParams } from './floating';
 
   let {
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
     source,
     target,
     markerEnd,
     selected
   }: EdgeProps = $props();
+
+  // Floating-edge anchors: instead of fixed L/R handle positions, read live
+  // node geometry and recompute the closest side every render. Loose mode
+  // means a single covering Handle, so we can't rely on sourceX/Y props.
+  // useInternalNode subscribes to a specific id. Edge source/target are
+  // stable for the edge lifetime (xyflow re-mounts the edge if either id
+  // changes), so it's safe to subscribe once with the initial values.
+  // untrack() acknowledges to Svelte that the one-shot read is intentional.
+  const sourceStore = useInternalNode(untrack(() => source));
+  const targetStore = useInternalNode(untrack(() => target));
+  const params = $derived.by(() => {
+    const s = sourceStore.current;
+    const t = targetStore.current;
+    if (!s || !t) return null;
+    return getEdgeParams(s, t);
+  });
 
   // Live flow count for this (src,dst). Re-derives whenever the worker's
   // snapshot tick replaces sim.edgeFlowByKey.
@@ -41,14 +54,16 @@
   const haloWidth = $derived(strokeWidth + 6);
 
   const pathTuple = $derived(
-    getBezierPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition
-    })
+    params
+      ? getBezierPath({
+          sourceX: params.sx,
+          sourceY: params.sy,
+          sourcePosition: params.sourcePos,
+          targetX: params.tx,
+          targetY: params.ty,
+          targetPosition: params.targetPos
+        })
+      : (['', 0, 0] as const)
   );
   const edgePath = $derived(pathTuple[0]);
   const labelX = $derived(pathTuple[1]);

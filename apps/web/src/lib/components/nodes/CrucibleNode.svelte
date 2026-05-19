@@ -3,7 +3,7 @@
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import type { CrucibleNodeData } from '$lib/stores/design.svelte';
   import { sim } from '$lib/stores/sim.svelte';
-  import { AlertTriangle } from '@lucide/svelte';
+  import { AlertTriangle, GripHorizontal } from '@lucide/svelte';
   import Hint from '../Hint.svelte';
   import Tooltip from '../Tooltip.svelte';
 
@@ -54,22 +54,29 @@
 <div
   role="group"
   aria-label={ariaSummary}
-  class="crucible-node rounded-lg border bg-panel px-3 py-2 font-mono text-xs shadow-lg ring-1
+  class="crucible-node relative rounded-lg border bg-panel px-3 py-2 font-mono text-xs shadow-lg ring-1
          transition-colors
          {selected ? 'ring-accent' : 'ring-line'}
          {metrics?.faulted ? 'border-err' : 'border-line'}
          {flashing ? 'crucible-node-flash' : ''}"
   style="min-width: 180px;"
 >
+  <!--
+    Easy-connect handle: a single Handle stretched over the whole node body.
+    In ConnectionMode.Loose this acts as both source and target, so user can
+    grab from anywhere on the node and connect any direction. The dragHandle
+    selector on the parent node scopes node-move to .node-drag-handle, so
+    body grabs start a connection instead of a move.
+  -->
   <Handle
-    type="target"
+    type="source"
     position={Position.Left}
-    class="crucible-handle crucible-handle--target"
-    aria-label="Input port"
+    class="crucible-handle crucible-handle--cover"
+    aria-label="Connect from anywhere on this component"
   />
 
-  <div class="mb-1.5 flex items-center gap-2 border-b border-line pb-1.5">
-    <entry.icon class="h-4 w-4 text-accent" aria-hidden="true" />
+  <div class="node-drag-handle mb-1.5 flex cursor-move items-center gap-2 border-b border-line pb-1.5">
+    <entry.icon class="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
     <Tooltip content={entry.details} side="top">
       {#snippet children(id)}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -90,7 +97,7 @@
           <span
             tabindex="0"
             aria-describedby={id}
-            class="ml-auto inline-flex cursor-help focus-visible:outline-none
+            class="inline-flex cursor-help focus-visible:outline-none
                    focus-visible:ring-2 focus-visible:ring-err"
             aria-label="Node is faulted"
           >
@@ -99,9 +106,13 @@
         {/snippet}
       </Tooltip>
     {/if}
+    <GripHorizontal
+      class="ml-auto h-3 w-3 shrink-0 text-muted opacity-40"
+      aria-hidden="true"
+    />
   </div>
 
-  <div class="space-y-0.5 text-muted">
+  <div class="crucible-node-body space-y-0.5 text-muted">
     {#if metrics}
       <div class="flex justify-between">
         <Hint term="rps" />
@@ -134,47 +145,54 @@
     {/if}
   </div>
 
-  <Handle
-    type="source"
-    position={Position.Right}
-    class="crucible-handle crucible-handle--source"
-    aria-label="Output port"
-  />
 </div>
 
 <style>
-  :global(.svelte-flow .crucible-handle) {
-    width: 16px;
-    height: 16px;
-    border-radius: 9999px;
-    background: var(--crucible-accent, #58a6ff);
-    border: 2px solid var(--crucible-panel, #0d1117);
-    transition: transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
-  }
-  /* Invisible padded hit-target so users don't need pixel-perfect aim.
-     Extends ~10px in every direction without affecting the visible dot. */
-  :global(.svelte-flow .crucible-handle::before) {
-    content: '';
+  /*
+    Easy-connect: a single Handle stretched over the full node body. No
+    visible "dot" — the whole card is the grab target. Border ring on hover
+    pulls the eye like Figma's connector hover, and turns green on valid
+    drop target during a drag (xyflow adds .valid automatically in Loose).
+  */
+  :global(.svelte-flow .crucible-handle--cover) {
     position: absolute;
-    inset: -10px;
-    border-radius: 9999px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: none;
+    background: transparent;
+    border: none;
+    border-radius: 0.5rem;
+    opacity: 0;
+    transition: opacity 120ms ease, box-shadow 120ms ease;
+    /*
+      Sit behind content. Body content has pointer-events:none so pointer
+      events fall through to this handle — that's how xyflow detects
+      connect-start anywhere on the node. The header drag-handle restores
+      pointer-events:auto so node-move still works on the title strip.
+    */
+    z-index: 0;
   }
-  :global(.svelte-flow .crucible-handle:hover),
-  :global(.svelte-flow .crucible-handle.connectingfrom),
-  :global(.svelte-flow .crucible-handle.connectionindicator) {
-    transform: scale(1.35);
-    box-shadow: 0 0 0 5px rgba(88, 166, 255, 0.22);
+  .crucible-node > :global(.node-drag-handle) {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
   }
-  /* Valid drop target during a drag — green pulse pulls the eye. */
-  :global(.svelte-flow .crucible-handle.valid) {
-    background: #3fb950;
-    box-shadow: 0 0 0 6px rgba(63, 185, 80, 0.28);
+  .crucible-node > :global(.crucible-node-body) {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
   }
-  :global(.svelte-flow .crucible-handle--source) {
-    right: -9px;
+  :global(.svelte-flow .crucible-handle--cover:hover),
+  :global(.svelte-flow .crucible-handle--cover.connectingfrom),
+  :global(.svelte-flow .crucible-handle--cover.connectionindicator) {
+    opacity: 1;
+    box-shadow: inset 0 0 0 2px rgba(88, 166, 255, 0.55);
   }
-  :global(.svelte-flow .crucible-handle--target) {
-    left: -9px;
+  /* Valid drop target during a drag — green ring pulls the eye. */
+  :global(.svelte-flow .crucible-handle--cover.valid) {
+    opacity: 1;
+    box-shadow: inset 0 0 0 3px #3fb950, 0 0 18px rgba(63, 185, 80, 0.4);
   }
   .crucible-node {
     transition: border-color 160ms ease, box-shadow 160ms ease;
