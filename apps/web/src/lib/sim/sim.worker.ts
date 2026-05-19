@@ -24,6 +24,11 @@ const post = (m: OutMsg) => (self as unknown as Worker).postMessage(m);
 let running = false;
 let loaded = false;
 let lastSnapshot = 0;
+// If `start` arrives while `load` is still awaiting WASM boot, stash the
+// requested speed here and fire the start sequence at the tail of the
+// load case. Without this the start handler races the boot and touches
+// `crucible` before the Go runtime has installed the global.
+let pendingStartSpeed: number | null = null;
 
 // 60Hz render cadence, but snapshots throttled to ~30Hz to keep
 // postMessage cost down.
@@ -86,9 +91,21 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
           return;
         }
         post({ type: 'ready' });
+        // Drain a start that arrived during boot.
+        if (pendingStartSpeed !== null) {
+          crucible.setSpeed(pendingStartSpeed);
+          pendingStartSpeed = null;
+          running = true;
+          lastSnapshot = 0;
+          tickLoop();
+        }
         return;
       }
       case 'start':
+        if (!loaded) {
+          pendingStartSpeed = msg.speed;
+          return;
+        }
         crucible.setSpeed(msg.speed);
         running = true;
         lastSnapshot = 0;
@@ -104,15 +121,19 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
         return;
       case 'stop':
         running = false;
-        crucible.reset();
+        pendingStartSpeed = null;
+        if (loaded) crucible.reset();
         return;
       case 'setSpeed':
+        if (!loaded) return;
         crucible.setSpeed(msg.value);
         return;
       case 'setRPS':
+        if (!loaded) return;
         crucible.setRPS(msg.nodeId, msg.rps);
         return;
       case 'injectFault':
+        if (!loaded) return;
         crucible.injectFault(msg.nodeId, msg.kind, msg.on);
         return;
     }
