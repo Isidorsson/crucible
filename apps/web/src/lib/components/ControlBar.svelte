@@ -19,22 +19,109 @@
     { label: 'max', aria: 'Maximum speed', value: 1e9 }
   ];
 
-  // Logarithmic RPS slider: slider 0..100 maps to 1..1_000_000 rps.
-  function sliderToRps(s: number): number {
-    const min = Math.log10(1);
-    const max = Math.log10(1_000_000);
-    return Math.round(Math.pow(10, min + ((max - min) * s) / 100));
-  }
-  function rpsToSlider(rps: number): number {
-    const min = Math.log10(1);
-    const max = Math.log10(1_000_000);
-    return ((Math.log10(Math.max(1, rps)) - min) / (max - min)) * 100;
-  }
-
   const numberFmt = new Intl.NumberFormat();
 
-  let sliderValue = $state<number>(rpsToSlider(100));
-  const globalRps = $derived(sliderToRps(sliderValue));
+  // Decade presets cover the simulator's load range in one tap. Mirrors the
+  // speed-preset chip pattern above, so the toolbar reads as a consistent
+  // segmented vocabulary instead of a slider competing with chips.
+  const RPS_DECADES: { label: string; value: number }[] = [
+    { label: '1', value: 1 },
+    { label: '10', value: 10 },
+    { label: '100', value: 100 },
+    { label: '1k', value: 1_000 },
+    { label: '10k', value: 10_000 },
+    { label: '100k', value: 100_000 },
+    { label: '1M', value: 1_000_000 }
+  ];
+
+  let globalRps = $state<number>(100);
+
+  // Editable/scrubbable rps field. The field lifts into edit mode on click
+  // or focus; drag (or arrow keys) scrubs by the current decade so the
+  // step matches the magnitude — dragging at 1k tunes by 100, dragging at
+  // 10 tunes by 1.
+  let editing = $state(false);
+  let editValue = $state('');
+  let editInput = $state<HTMLInputElement | null>(null);
+
+  function setRps(v: number) {
+    const clamped = Math.max(1, Math.min(1_000_000, Math.round(v)));
+    if (clamped === globalRps) return;
+    globalRps = clamped;
+  }
+
+  function beginEdit() {
+    editValue = String(globalRps);
+    editing = true;
+    queueMicrotask(() => {
+      editInput?.focus();
+      editInput?.select();
+    });
+  }
+
+  function commitEdit() {
+    const parsed = Number(editValue.replace(/[, _]/g, ''));
+    if (Number.isFinite(parsed) && parsed > 0) setRps(parsed);
+    editing = false;
+  }
+
+  function onEditKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEdit();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      editing = false;
+      return;
+    }
+  }
+
+  // Pointer-scrub: drag the number left/right to change. Step scales with
+  // the current decade so the drag feel stays consistent across the log
+  // range — Figma/Blender-style.
+  let scrubStartX = 0;
+  let scrubStartVal = 0;
+  function onScrubDown(e: PointerEvent) {
+    if (editing) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scrubStartX = e.clientX;
+    scrubStartVal = globalRps;
+  }
+  function onScrubMove(e: PointerEvent) {
+    if (editing) return;
+    const el = e.currentTarget as HTMLElement;
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - scrubStartX;
+    if (Math.abs(dx) < 2) return;
+    // Step = 10% of starting decade, e.g. start at 100 → step 10/px.
+    const decade = Math.pow(10, Math.floor(Math.log10(Math.max(1, scrubStartVal))));
+    const step = Math.max(1, decade / 10);
+    // 2 px per step keeps the scrub feeling controlled, not skittish.
+    setRps(scrubStartVal + Math.round(dx / 2) * step);
+  }
+  function onScrubUp(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+  }
+
+  function onScrubKey(e: KeyboardEvent) {
+    if (editing) return;
+    const decade = Math.pow(10, Math.floor(Math.log10(Math.max(1, globalRps))));
+    const fine = Math.max(1, decade / 10);
+    const coarse = decade;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setRps(globalRps + (e.shiftKey ? coarse : fine));
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setRps(globalRps - (e.shiftKey ? coarse : fine));
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      beginEdit();
+    }
+  }
 
   // Wrap the iteration in `untrack` so reading + writing `design.nodes`
   // doesn't retrigger this effect — only changes to globalRps should.
@@ -151,24 +238,91 @@
 
   <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
 
-  <div class="flex min-w-0 flex-1 items-center gap-2">
+  <div
+    class="flex items-center gap-1.5"
+    role="group"
+    aria-label="Global RPS scale"
+  >
     <Activity class="h-3.5 w-3.5 text-muted" aria-hidden="true" />
     <Hint term="scale" side="bottom" class="text-muted" />
-    <label class="sr-only" for="rps-scale">Global RPS scale</label>
-    <input
-      id="rps-scale"
-      name="rps-scale"
-      type="range"
-      min="0"
-      max="100"
-      step="0.5"
-      bind:value={sliderValue}
-      aria-valuetext="{numberFmt.format(globalRps)} requests per second"
-      class="flex-1 accent-accent focus-visible:ring-2 focus-visible:ring-accent"
-    />
-    <span class="w-24 text-right tabular-nums">
-      {numberFmt.format(globalRps)} <Hint term="rps" />
-    </span>
+    {#each RPS_DECADES as d}
+      {@const active = globalRps === d.value}
+      <Tooltip content="Set global source rate to {numberFmt.format(d.value)} rps." side="bottom">
+        {#snippet children(id)}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label="{numberFmt.format(d.value)} requests per second"
+            aria-describedby={id}
+            onclick={() => setRps(d.value)}
+            class="rounded px-2 py-1 font-mono text-[11px] transition-colors
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+                   {active ? 'bg-accent text-bg' : 'border border-line hover:border-accent'}"
+          >
+            {d.label}
+          </button>
+        {/snippet}
+      </Tooltip>
+    {/each}
+
+    <!--
+      Scrubbable + editable rps. Drag horizontally, arrow-key, or click to
+      type. Step auto-scales with the current decade so the feel stays
+      uniform across the log range.
+    -->
+    <Tooltip
+      content="Click to type, drag horizontally to scrub, or use arrow keys (Shift = ×10 step)."
+      side="bottom"
+    >
+      {#snippet children(tipId)}
+        {#if editing}
+          <label class="sr-only" for="rps-edit">Global RPS</label>
+          <input
+            id="rps-edit"
+            name="rps-scale"
+            bind:this={editInput}
+            bind:value={editValue}
+            onblur={commitEdit}
+            onkeydown={onEditKey}
+            type="number"
+            inputmode="numeric"
+            min="1"
+            max="1000000"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Type global rps"
+            aria-describedby={tipId}
+            class="w-20 rounded border border-accent bg-bg px-1.5 py-1 text-right font-mono text-[11px]
+                   tabular-nums text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
+        {:else}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <span
+            role="spinbutton"
+            tabindex="0"
+            aria-label="Custom rps"
+            aria-describedby={tipId}
+            aria-valuemin="1"
+            aria-valuemax="1000000"
+            aria-valuenow={globalRps}
+            aria-valuetext="{numberFmt.format(globalRps)} requests per second"
+            onpointerdown={onScrubDown}
+            onpointermove={onScrubMove}
+            onpointerup={onScrubUp}
+            onpointercancel={onScrubUp}
+            onkeydown={onScrubKey}
+            ondblclick={beginEdit}
+            onclick={beginEdit}
+            class="crucible-scrub min-w-[3.5rem] rounded border border-line bg-bg px-2 py-1 text-right
+                   font-mono text-[11px] tabular-nums text-ink hover:border-accent
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {numberFmt.format(globalRps)}<span class="ml-1 text-[9px] text-muted">rps</span>
+          </span>
+        {/if}
+      {/snippet}
+    </Tooltip>
   </div>
 
   <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
@@ -212,3 +366,17 @@
     {/if}
   </div>
 </div>
+
+<style>
+  /* Scrubbable rps value: ew-resize cursor on hover hints the drag, and
+     touch-action:none lets us own horizontal pointer gestures without
+     fighting the page from panning underneath on touch devices. */
+  .crucible-scrub {
+    cursor: ew-resize;
+    user-select: none;
+    touch-action: none;
+  }
+  .crucible-scrub:active {
+    cursor: grabbing;
+  }
+</style>
