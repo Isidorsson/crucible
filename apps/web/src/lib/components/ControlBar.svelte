@@ -3,6 +3,7 @@
   import { Play, Pause, Square, Gauge, Activity, RotateCcw } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
+  import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
   import { GLOSSARY } from './glossary';
@@ -37,11 +38,15 @@
 
   // Wrap the iteration in `untrack` so reading + writing `design.nodes`
   // doesn't retrigger this effect — only changes to globalRps should.
+  // Match every node whose engine kind is `source` (Source, Web Client,
+  // Mobile Client, Cron Job, …); matching the catalog kind string alone
+  // missed those variants and made the scale slider silently no-op on
+  // anything but the generic Source node.
   $effect(() => {
     const rps = globalRps;
     untrack(() => {
       for (const n of design.nodes) {
-        if (n.data.kind !== 'source') continue;
+        if (CATALOG_BY_KIND[n.data.kind].engineKind !== 'source') continue;
         if (n.data.props.rps === rps) continue; // no-op write would still re-render
         design.updateNodeProps(n.id, { rps });
         sim.setRPS(n.id, rps);

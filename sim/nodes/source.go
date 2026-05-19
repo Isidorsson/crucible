@@ -38,8 +38,12 @@ func (s *Source) OnEvent(sim *engine.Sim, ev engine.Event) {
 	s.touch(sim.Now)
 	switch ev.Kind {
 	case engine.EvTick:
-		// emit one request, schedule the next
+		// emit one request, schedule the next, and count the emission as
+		// throughput so the node's own rps reflects what it just produced.
+		// Without this, edge flow downstream shows traffic but the source
+		// node itself reads 0 rps — confusing for anyone reading the UI.
 		sim.Emit(s.id)
+		s.recordCompletion()
 		s.scheduleNext(sim)
 	}
 }

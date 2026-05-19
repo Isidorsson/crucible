@@ -139,20 +139,24 @@ export const TEMPLATES: Template[] = [
   {
     id: 'pubsub-fanout',
     label: 'Pub/Sub Fan-Out',
-    description: 'Producer → Event Bus → many consumers in parallel.',
+    description: 'Client → Producer → Event Bus → many consumers in parallel.',
     icon: Workflow,
     nodes: [
-      { kind: 'service', dx: 0, dy: ROW },
-      { kind: 'eventBus', dx: COL, dy: ROW },
-      { kind: 'worker', dx: COL * 2, dy: 0 },
-      { kind: 'worker', dx: COL * 2, dy: ROW },
-      { kind: 'worker', dx: COL * 2, dy: ROW * 2 }
+      // Producer needs an upstream source so the chain actually carries
+      // traffic; service nodes don't generate requests on their own.
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'service', dx: COL, dy: ROW },
+      { kind: 'eventBus', dx: COL * 2, dy: ROW },
+      { kind: 'worker', dx: COL * 3, dy: 0 },
+      { kind: 'worker', dx: COL * 3, dy: ROW },
+      { kind: 'worker', dx: COL * 3, dy: ROW * 2 }
     ],
     edges: [
       { from: 0, to: 1 },
       { from: 1, to: 2 },
-      { from: 1, to: 3 },
-      { from: 1, to: 4 }
+      { from: 2, to: 3 },
+      { from: 2, to: 4 },
+      { from: 2, to: 5 }
     ]
   }
 ];
