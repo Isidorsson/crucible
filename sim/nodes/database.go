@@ -44,14 +44,15 @@ func (c *Cache) OnRequest(sim *engine.Sim, req *engine.Request) {
 		c.inFlight++
 		return
 	}
-	// miss: forward downstream (typically a DB)
+	// miss: forward downstream (typically a DB); round-robin if multiple.
 	pool := sim.Downstream(c.id)
-	if len(pool) == 0 {
+	target := c.nextDownstream(pool)
+	if target == "" {
 		sim.FailReq(req, "cache miss, no backing store")
 		c.recordError()
 		return
 	}
-	sim.Schedule(sim.Now, engine.EvRequestArrive, pool[0], req.ID, nil)
+	sim.Schedule(sim.Now, engine.EvRequestArrive, target, req.ID, nil)
 }
 
 // Queue: holds requests; consumers downstream pull at a fixed drain rate.
@@ -110,8 +111,13 @@ func (q *Queue) OnEvent(sim *engine.Sim, ev engine.Event) {
 		q.buffer = q.buffer[1:]
 		q.queue = len(q.buffer)
 		pool := sim.Downstream(q.id)
-		if len(pool) > 0 {
-			sim.Schedule(sim.Now, engine.EvRequestArrive, pool[0], reqID, nil)
+		// Competing-consumers semantics: each dequeued request goes to
+		// one downstream, picked round-robin. So an Event Bus / Kafka /
+		// pubsub queue with three workers spreads load 1/3 each instead
+		// of pinning the whole stream to worker[0].
+		target := q.nextDownstream(pool)
+		if target != "" {
+			sim.Schedule(sim.Now, engine.EvRequestArrive, target, reqID, nil)
 			q.recordCompletion()
 		}
 	}

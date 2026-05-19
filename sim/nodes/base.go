@@ -18,6 +18,11 @@ type base struct {
 	totalRcv uint64
 	lastNow  int64
 
+	// Cursor for round-robin fan-out across multiple downstreams. Each
+	// non-LB node that forwards traffic uses this so a fan-out of N
+	// children gets balanced 1/N share, not all to downstream[0].
+	outCursor int
+
 	lat *metrics.LatencyRing
 	tp  *metrics.ThroughputWindow
 }
@@ -48,6 +53,17 @@ func (b *base) touch(now int64)     { b.lastNow = now }
 func (b *base) recordLatency(ns int64) { b.lat.Add(ns) }
 func (b *base) recordCompletion()      { b.tp.Add(b.lastNow) }
 func (b *base) recordError()           { b.errors++ }
+
+// nextDownstream returns the next downstream id by round-robin, or ""
+// when the pool is empty. Mutates outCursor so subsequent calls march.
+func (b *base) nextDownstream(pool []string) string {
+	if len(pool) == 0 {
+		return ""
+	}
+	id := pool[b.outCursor%len(pool)]
+	b.outCursor++
+	return id
+}
 
 func (b *base) Snapshot() engine.NodeMetrics {
 	rate := b.tp.Rate(b.lastNow)

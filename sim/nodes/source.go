@@ -50,10 +50,10 @@ func (s *Source) OnEvent(sim *engine.Sim, ev engine.Event) {
 
 func (s *Source) routeOut(sim *engine.Sim, req *engine.Request) {
 	downstream := sim.Downstream(s.id)
-	if len(downstream) == 0 {
+	target := s.nextDownstream(downstream)
+	if target == "" {
 		sim.Complete(req)
 		return
 	}
-	target := downstream[0]
 	sim.Schedule(sim.Now, engine.EvRequestArrive, target, req.ID, nil)
 }

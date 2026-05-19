@@ -76,10 +76,12 @@ func (s *Service) OnEvent(sim *engine.Sim, ev engine.Event) {
 	s.recordCompletion()
 
 	downstream := sim.Downstream(s.id)
-	if len(downstream) == 0 {
+	target := s.nextDownstream(downstream)
+	if target == "" {
 		sim.Complete(req)
 		return
 	}
-	// fan-out: send to first downstream. Load balancer handles multi-fan-out.
-	sim.Schedule(sim.Now, engine.EvRequestArrive, downstream[0], req.ID, nil)
+	// Round-robin across all downstreams so API-Gateway → [svcA, svcB]
+	// and similar fan-outs balance instead of pinning one child.
+	sim.Schedule(sim.Now, engine.EvRequestArrive, target, req.ID, nil)
 }
