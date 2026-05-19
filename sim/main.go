@@ -71,20 +71,33 @@ func jsStep(this js.Value, args []js.Value) any {
 	return js.ValueOf(processed)
 }
 
+type edgeFlowJSON struct {
+	Src   string `json:"src"`
+	Dst   string `json:"dst"`
+	Count uint32 `json:"count"`
+}
+
 func jsSnapshot(this js.Value, args []js.Value) any {
 	if sim == nil {
 		return js.ValueOf("[]")
 	}
-	out := make([]engine.NodeMetrics, 0, len(sim.Nodes))
+	nodesOut := make([]engine.NodeMetrics, 0, len(sim.Nodes))
 	for _, n := range sim.Nodes {
-		out = append(out, n.Snapshot())
+		nodesOut = append(nodesOut, n.Snapshot())
+	}
+	drained := sim.DrainEdgeFlow()
+	edgesOut := make([]edgeFlowJSON, 0, len(drained))
+	for k, v := range drained {
+		edgesOut = append(edgesOut, edgeFlowJSON{Src: k.Src, Dst: k.Dst, Count: v})
 	}
 	payload := map[string]any{
 		"now":       sim.Now,
 		"born":      sim.Born,
 		"completed": sim.Completed,
 		"failed":    sim.Failed,
-		"nodes":     out,
+		"inFlight":  len(sim.Requests),
+		"nodes":     nodesOut,
+		"edges":     edgesOut,
 	}
 	b, _ := json.Marshal(payload)
 	return js.ValueOf(string(b))

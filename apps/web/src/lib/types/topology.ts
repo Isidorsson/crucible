@@ -54,10 +54,18 @@ export interface NodeMetrics {
   faulted: boolean;
 }
 
+export interface EdgeFlow {
+  src: string;
+  dst: string;
+  count: number;
+}
+
 export interface SimSnapshot {
   now: number;
   born: number;
   completed: number;
   failed: number;
+  inFlight: number;
   nodes: NodeMetrics[];
+  edges: EdgeFlow[];
 }

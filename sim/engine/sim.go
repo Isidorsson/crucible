@@ -24,7 +24,14 @@ type Sim struct {
 	Completed uint64
 	Failed    uint64
 	Born      uint64
+
+	// EdgeFlow counts request traversals per (src,dst) edge inside the
+	// current snapshot window. UI consumes + resets it on Snapshot() so
+	// edges pulse only while traffic actually flows. Bounded by edge count.
+	EdgeFlow map[edgeKey]uint32
 }
+
+type edgeKey struct{ Src, Dst string }
 
 func NewSim(seed uint64) *Sim {
 	return &Sim{
@@ -33,6 +40,7 @@ func NewSim(seed uint64) *Sim {
 		Nodes:    make(map[string]Node, 32),
 		Edges:    make(map[string][]string, 32),
 		Requests: make(map[uint64]*Request, 1024),
+		EdgeFlow: make(map[edgeKey]uint32, 64),
 	}
 }
 
@@ -92,7 +100,11 @@ func (s *Sim) dispatch(ev Event) {
 		if req == nil {
 			return
 		}
+		prev := req.CurrentID
 		req.Hop(ev.NodeID)
+		if prev != "" && prev != ev.NodeID {
+			s.EdgeFlow[edgeKey{Src: prev, Dst: ev.NodeID}]++
+		}
 		n.OnRequest(s, req)
 	default:
 		n.OnEvent(s, ev)
@@ -109,12 +121,26 @@ func (s *Sim) Emit(originID string) {
 }
 
 // Complete and Fail are accounting hooks for sink/error paths.
+// Both free the request from the map so memory stays bounded by
+// in-flight count, not by lifetime total. The req pointer remains
+// valid for the caller's stack frame; we only drop the map entry.
 func (s *Sim) Complete(req *Request) {
 	req.Finish(s.Now)
 	s.Completed++
+	delete(s.Requests, req.ID)
 }
 
 func (s *Sim) FailReq(req *Request, reason string) {
 	req.Fail(reason, s.Now)
 	s.Failed++
+	delete(s.Requests, req.ID)
+}
+
+// DrainEdgeFlow returns and resets the edge-flow counters. Called by the
+// WASM snapshot path so the UI can animate edges that saw traffic in the
+// last frame.
+func (s *Sim) DrainEdgeFlow() map[edgeKey]uint32 {
+	out := s.EdgeFlow
+	s.EdgeFlow = make(map[edgeKey]uint32, len(out))
+	return out
 }

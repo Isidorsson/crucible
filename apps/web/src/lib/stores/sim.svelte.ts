@@ -1,4 +1,4 @@
-import type { SimSnapshot, NodeMetrics, FaultKind } from '$lib/types/topology';
+import type { SimSnapshot, NodeMetrics, FaultKind, EdgeFlow } from '$lib/types/topology';
 import { design } from './design.svelte';
 
 export type SimState = 'idle' | 'loading' | 'running' | 'paused';
@@ -8,11 +8,18 @@ interface WorkerMsg {
   payload?: SimSnapshot | string;
 }
 
+// Key edges by `${src}->${dst}` to match the way Svelte Flow Edge IDs are
+// typically constructed downstream. Keep both raw + keyed lookups.
+function edgeKey(e: EdgeFlow): string {
+  return `${e.src}->${e.dst}`;
+}
+
 function createSimStore() {
   let state = $state<SimState>('idle');
   let speed = $state<number>(1);
   let snapshot = $state<SimSnapshot | null>(null);
   let metricsByNode = $state<Record<string, NodeMetrics>>({});
+  let edgeFlowByKey = $state<Record<string, number>>({});
   let error = $state<string | null>(null);
 
   let worker: Worker | null = null;
@@ -26,9 +33,12 @@ function createSimStore() {
       const m = ev.data;
       if (m.type === 'snapshot' && m.payload && typeof m.payload !== 'string') {
         snapshot = m.payload;
-        const map: Record<string, NodeMetrics> = {};
-        for (const n of m.payload.nodes) map[n.id] = n;
-        metricsByNode = map;
+        const nodeMap: Record<string, NodeMetrics> = {};
+        for (const n of m.payload.nodes) nodeMap[n.id] = n;
+        metricsByNode = nodeMap;
+        const edgeMap: Record<string, number> = {};
+        for (const e of m.payload.edges) edgeMap[edgeKey(e)] = e.count;
+        edgeFlowByKey = edgeMap;
       } else if (m.type === 'error' && typeof m.payload === 'string') {
         error = m.payload;
         state = 'idle';
@@ -63,6 +73,7 @@ function createSimStore() {
     state = 'idle';
     snapshot = null;
     metricsByNode = {};
+    edgeFlowByKey = {};
   }
 
   function setSpeed(v: number) {
@@ -90,6 +101,9 @@ function createSimStore() {
     },
     get metricsByNode() {
       return metricsByNode;
+    },
+    get edgeFlowByKey() {
+      return edgeFlowByKey;
     },
     get error() {
       return error;
