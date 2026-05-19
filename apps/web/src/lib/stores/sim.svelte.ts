@@ -23,6 +23,17 @@ function createSimStore() {
   let error = $state<string | null>(null);
 
   let worker: Worker | null = null;
+  // Wall time of the previous snapshot — used to convert per-window edge
+  // counts into a true rate (rps) so we don't display "packets per ~33ms".
+  let lastSnapshotWallMs = 0;
+  // Exponential moving average smoothing factor for edge flow. 0.35 keeps
+  // the pill responsive to real load changes (~3 ticks to converge) but
+  // smooths out the on/off aliasing when source RPS is low enough that a
+  // single packet straddles snapshot windows.
+  const EDGE_EMA_ALPHA = 0.35;
+  // Drop edges from the map once their smoothed rate decays below this
+  // threshold so a long-disconnected edge stops occupying memory.
+  const EDGE_PRUNE_BELOW = 0.05;
 
   function ensureWorker() {
     if (worker) return worker;
@@ -36,9 +47,30 @@ function createSimStore() {
         const nodeMap: Record<string, NodeMetrics> = {};
         for (const n of m.payload.nodes) nodeMap[n.id] = n;
         metricsByNode = nodeMap;
-        const edgeMap: Record<string, number> = {};
-        for (const e of m.payload.edges) edgeMap[edgeKey(e)] = e.count;
-        edgeFlowByKey = edgeMap;
+
+        // Convert per-window counts → instantaneous rate, then EMA-smooth
+        // against the previous edgeFlowByKey so visuals don't blink on/off
+        // when traffic is sparse enough to straddle snapshot windows.
+        const now = performance.now();
+        const dtMs = lastSnapshotWallMs === 0 ? 33 : Math.max(1, now - lastSnapshotWallMs);
+        lastSnapshotWallMs = now;
+        const rateScale = 1000 / dtMs;
+
+        const fresh: Record<string, number> = {};
+        for (const e of m.payload.edges) fresh[edgeKey(e)] = e.count * rateScale;
+
+        const next: Record<string, number> = {};
+        const prev = edgeFlowByKey;
+        const seen = new Set<string>();
+        for (const k of Object.keys(prev)) seen.add(k);
+        for (const k of Object.keys(fresh)) seen.add(k);
+        for (const k of seen) {
+          const p = prev[k] ?? 0;
+          const f = fresh[k] ?? 0;
+          const ema = EDGE_EMA_ALPHA * f + (1 - EDGE_EMA_ALPHA) * p;
+          if (ema >= EDGE_PRUNE_BELOW) next[k] = ema;
+        }
+        edgeFlowByKey = next;
       } else if (m.type === 'error' && typeof m.payload === 'string') {
         error = m.payload;
         state = 'idle';
@@ -77,6 +109,7 @@ function createSimStore() {
     snapshot = null;
     metricsByNode = {};
     edgeFlowByKey = {};
+    lastSnapshotWallMs = 0;
   }
 
   function setSpeed(v: number) {

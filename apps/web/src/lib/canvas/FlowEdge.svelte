@@ -26,9 +26,10 @@
 
   // Five-tier ramp. Thresholds picked so a sysadmin's intuition matches the
   // color: <50 = trickle, 50-499 = warm, 500-4999 = hot, 5000+ = saturated
-  // and the line goes lava red as a runaway-load signal.
+  // and the line goes lava red as a runaway-load signal. flow is an EMA-
+  // smoothed float, so use < 1 (not === 0) to mean "no meaningful traffic".
   const tier = $derived(
-    flow === 0 ? 0 : flow < 50 ? 1 : flow < 500 ? 2 : flow < 5000 ? 3 : 4
+    flow < 1 ? 0 : flow < 50 ? 1 : flow < 500 ? 2 : flow < 5000 ? 3 : 4
   );
   // Cool steel → cyan → green → forge amber → lava red. Chosen to look like
   // an annealing metal scale: the visual heat tracks request volume.
@@ -69,8 +70,8 @@
   // saturated link visibly outpaces a trickle. Each packet is a glowing
   // head plus a faint trail circle staggered slightly behind it for a
   // comet/ember look without needing SVG filters.
-  const showPackets = $derived(flow > 0 && !reduceMotion);
-  const packetCount = $derived(flow === 0 ? 0 : Math.min(4, 1 + Math.floor(intensity * 3)));
+  const showPackets = $derived(flow >= 1 && !reduceMotion);
+  const packetCount = $derived(flow < 1 ? 0 : Math.min(4, 1 + Math.floor(intensity * 3)));
   const packetDur = $derived(Math.max(0.5, 1.7 - intensity * 1.2));
   const packetRadius = $derived(2.4 + intensity * 2.2);
   const packetGlow = $derived(3 + intensity * 6);
@@ -84,7 +85,7 @@
 
 <!-- Halo: wide, low-opacity stroke under the main path. Reads as a soft
      glow without paying for an SVG <filter> blur. -->
-{#if flow > 0}
+{#if flow >= 1}
   <path
     d={edgePath}
     fill="none"
@@ -130,7 +131,7 @@
   {/each}
 {/if}
 
-{#if flow > 0}
+{#if flow >= 1}
   <EdgeLabel
     x={labelX}
     y={labelY}
