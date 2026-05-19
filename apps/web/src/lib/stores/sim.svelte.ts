@@ -22,6 +22,26 @@ function createSimStore() {
   let edgeFlowByKey = $state<Record<string, number>>({});
   let error = $state<string | null>(null);
 
+  // ── Time-series ring buffers ────────────────────────────────────────────
+  // Last N samples per node/edge feed sparklines and trend arrows in the
+  // UI. Fixed-size arrays so memory stays bounded for very long sessions.
+  const HISTORY_LEN = 32;
+  interface NodeHistory {
+    rps: number[];
+    p99: number[];
+    inFlight: number[];
+  }
+  let nodeHistory = $state<Record<string, NodeHistory>>({});
+  let edgeHistory = $state<Record<string, number[]>>({});
+
+  function pushSample(arr: number[], v: number): number[] {
+    // Out-of-place push so $state proxies see a fresh array each tick;
+    // mutating in place wouldn't notify subscribers.
+    const next = arr.length >= HISTORY_LEN ? arr.slice(1) : arr.slice();
+    next.push(v);
+    return next;
+  }
+
   // Sim worker only reports `faulted: bool` per node; it never tells us
   // *which* fault is active. The UI needs that to highlight the right
   // chaos button and to schedule an auto-clear. Mirror it locally — the
@@ -58,6 +78,19 @@ function createSimStore() {
         for (const n of m.payload.nodes) nodeMap[n.id] = n;
         metricsByNode = nodeMap;
 
+        // Append a sample per node. Skip nodes that disappeared (e.g. were
+        // deleted mid-run) so their history doesn't grow indefinitely.
+        const nextNodeHist: Record<string, NodeHistory> = {};
+        for (const n of m.payload.nodes) {
+          const prev = nodeHistory[n.id] ?? { rps: [], p99: [], inFlight: [] };
+          nextNodeHist[n.id] = {
+            rps: pushSample(prev.rps, n.throughput),
+            p99: pushSample(prev.p99, n.p99),
+            inFlight: pushSample(prev.inFlight, n.inFlight)
+          };
+        }
+        nodeHistory = nextNodeHist;
+
         // Convert per-window counts → instantaneous rate, then EMA-smooth
         // against the previous edgeFlowByKey so visuals don't blink on/off
         // when traffic is sparse enough to straddle snapshot windows.
@@ -81,6 +114,14 @@ function createSimStore() {
           if (ema >= EDGE_PRUNE_BELOW) next[k] = ema;
         }
         edgeFlowByKey = next;
+
+        // Mirror the surviving edges into the history map; pruned edges
+        // drop their history too so memory stays bounded.
+        const nextEdgeHist: Record<string, number[]> = {};
+        for (const k of Object.keys(next)) {
+          nextEdgeHist[k] = pushSample(edgeHistory[k] ?? [], next[k]);
+        }
+        edgeHistory = nextEdgeHist;
       } else if (m.type === 'error' && typeof m.payload === 'string') {
         error = m.payload;
         state = 'idle';
@@ -119,6 +160,8 @@ function createSimStore() {
     snapshot = null;
     metricsByNode = {};
     edgeFlowByKey = {};
+    nodeHistory = {};
+    edgeHistory = {};
     lastSnapshotWallMs = 0;
     for (const t of faultTimers.values()) clearTimeout(t);
     faultTimers.clear();
@@ -192,6 +235,12 @@ function createSimStore() {
     },
     get edgeFlowByKey() {
       return edgeFlowByKey;
+    },
+    get nodeHistory() {
+      return nodeHistory;
+    },
+    get edgeHistory() {
+      return edgeHistory;
     },
     get error() {
       return error;

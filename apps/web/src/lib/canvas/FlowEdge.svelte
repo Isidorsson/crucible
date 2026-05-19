@@ -35,7 +35,29 @@
 
   // Live flow count for this (src,dst). Re-derives whenever the worker's
   // snapshot tick replaces sim.edgeFlowByKey.
-  const flow = $derived(sim.edgeFlowByKey[`${source}->${target}`] ?? 0);
+  const edgeKey = $derived(`${source}->${target}`);
+  const flow = $derived(sim.edgeFlowByKey[edgeKey] ?? 0);
+  const flowHistory = $derived(sim.edgeHistory[edgeKey] ?? []);
+  // Target-node p99 piggybacks on the edge label so the link surfaces both
+  // throughput and tail latency without forcing the reader to fixate on
+  // node bodies.
+  const targetP99 = $derived(sim.metricsByNode[target]?.p99 ?? 0);
+
+  // Trend arrow: compare the last sample against the median of the prior
+  // half of the window. Median (not mean) so an isolated spike doesn't
+  // flip the arrow back and forth.
+  const trend = $derived.by((): '▲' | '▼' | '·' => {
+    const n = flowHistory.length;
+    if (n < 6) return '·';
+    const recent = flowHistory[n - 1];
+    const head = flowHistory.slice(0, Math.floor(n / 2)).sort((a, b) => a - b);
+    const baseline = head[Math.floor(head.length / 2)];
+    if (baseline < 0.5) return '·';
+    const delta = (recent - baseline) / baseline;
+    if (delta > 0.15) return '▲';
+    if (delta < -0.15) return '▼';
+    return '·';
+  });
 
   // Five-tier ramp. Thresholds picked so a sysadmin's intuition matches the
   // color: <50 = trickle, 50-499 = warm, 500-4999 = hot, 5000+ = saturated
@@ -52,6 +74,11 @@
   const intensity = $derived(Math.min(1, Math.log10(flow + 1) / 4));
   const strokeWidth = $derived(1.5 + intensity * 3.5);
   const haloWidth = $derived(strokeWidth + 6);
+
+  // Stroke dash pattern doubles the load encoding so the chart reads for
+  // users who can't distinguish the amber/red end of the ramp. Tiers 0-1
+  // are dashed (idle, trickle), 2+ solid (real traffic).
+  const dashArray = $derived(tier <= 1 ? '6 6' : 'none');
 
   const pathTuple = $derived(
     params
@@ -96,6 +123,22 @@
     if (rps < 1_000_000) return `${(rps / 1_000).toFixed(1)}k`;
     return `${(rps / 1_000_000).toFixed(1)}M`;
   }
+
+  function fmtLatency(ns: number): string {
+    if (!ns) return '';
+    if (ns < 1_000) return `${ns}ns`;
+    if (ns < 1_000_000) return `${(ns / 1_000).toFixed(0)}µs`;
+    if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(1)}ms`;
+    return `${(ns / 1_000_000_000).toFixed(1)}s`;
+  }
+
+  const ariaSummary = $derived.by(() => {
+    const parts = [`${fmtRate(flow)} requests per second`];
+    if (targetP99 > 0) parts.push(`p99 ${fmtLatency(targetP99)}`);
+    if (trend === '▲') parts.push('rising');
+    else if (trend === '▼') parts.push('falling');
+    return parts.join(', ');
+  });
 </script>
 
 <!-- Halo: wide, low-opacity stroke under the main path. Reads as a soft
@@ -104,6 +147,7 @@
   <path
     d={edgePath}
     fill="none"
+    aria-hidden="true"
     style="stroke: {stroke}; stroke-width: {haloWidth}px; opacity: 0.18;"
   />
 {/if}
@@ -113,37 +157,39 @@
   {markerEnd}
   style="stroke: {stroke}; stroke-width: {strokeWidth}px; opacity: {tier === 0
     ? 0.55
-    : 0.95}; transition: stroke 220ms ease, stroke-width 220ms ease, opacity 220ms ease;"
+    : 0.95}; stroke-dasharray: {dashArray}; transition: stroke 220ms ease, stroke-width 220ms ease, opacity 220ms ease;"
   class={selected ? 'crucible-edge-selected' : ''}
 />
 
 {#if showPackets}
-  {#each Array(packetCount) as _, i (i)}
-    {@const begin = (i * packetDur) / packetCount}
-    <!-- Bright head -->
-    <circle
-      r={packetRadius}
-      fill={stroke}
-      opacity="0.95"
-      style="filter: drop-shadow(0 0 {packetGlow}px {stroke});"
-    >
-      <animateMotion
-        dur="{packetDur}s"
-        repeatCount="indefinite"
-        path={edgePath}
-        begin="{begin}s"
-      />
-    </circle>
-    <!-- Faint trail, slightly behind -->
-    <circle r={packetRadius * 0.55} fill={stroke} opacity="0.4">
-      <animateMotion
-        dur="{packetDur}s"
-        repeatCount="indefinite"
-        path={edgePath}
-        begin="{Math.max(0, begin - 0.06)}s"
-      />
-    </circle>
-  {/each}
+  <g aria-hidden="true">
+    {#each Array(packetCount) as _, i (i)}
+      {@const begin = (i * packetDur) / packetCount}
+      <!-- Bright head -->
+      <circle
+        r={packetRadius}
+        fill={stroke}
+        opacity="0.95"
+        style="filter: drop-shadow(0 0 {packetGlow}px {stroke});"
+      >
+        <animateMotion
+          dur="{packetDur}s"
+          repeatCount="indefinite"
+          path={edgePath}
+          begin="{begin}s"
+        />
+      </circle>
+      <!-- Faint trail, slightly behind -->
+      <circle r={packetRadius * 0.55} fill={stroke} opacity="0.4">
+        <animateMotion
+          dur="{packetDur}s"
+          repeatCount="indefinite"
+          path={edgePath}
+          begin="{Math.max(0, begin - 0.06)}s"
+        />
+      </circle>
+    {/each}
+  </g>
 {/if}
 
 {#if flow >= 1}
@@ -153,9 +199,16 @@
     transparent
     class="crucible-edge-pill"
     style="--c: {stroke};"
-    aria-label="{fmtRate(flow)} requests per second"
+    aria-label={ariaSummary}
   >
     <span class="num">{fmtRate(flow)}</span><span class="unit">rps</span>
+    {#if trend !== '·'}
+      <span class="trend" data-dir={trend} aria-hidden="true">{trend}</span>
+    {/if}
+    {#if targetP99 > 0}
+      <span class="sep" aria-hidden="true">·</span>
+      <span class="lat tabular-nums">{fmtLatency(targetP99)}</span>
+    {/if}
   </EdgeLabel>
 {/if}
 
@@ -198,8 +251,31 @@
   }
   :global(.crucible-edge-pill .unit) {
     color: color-mix(in srgb, var(--c) 55%, #7d8590);
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  :global(.crucible-edge-pill .sep) {
+    color: color-mix(in srgb, var(--c) 35%, #7d8590);
+    opacity: 0.7;
+    margin: 0 2px;
+  }
+  :global(.crucible-edge-pill .lat) {
+    color: color-mix(in srgb, var(--c) 85%, #c9d1d9);
+    font-size: 9px;
+    font-weight: 500;
+  }
+  :global(.crucible-edge-pill .trend) {
+    margin-left: 3px;
+    font-size: 9px;
+    line-height: 1;
+    font-weight: 700;
+  }
+  :global(.crucible-edge-pill .trend[data-dir='▲']) {
+    color: #f0883e;
+  }
+  :global(.crucible-edge-pill .trend[data-dir='▼']) {
+    color: #58a6ff;
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.svelte-flow .crucible-edge-selected) {

@@ -6,10 +6,36 @@
   import { AlertTriangle, GripHorizontal } from '@lucide/svelte';
   import Hint from '../Hint.svelte';
   import Tooltip from '../Tooltip.svelte';
+  import Sparkline from '../Sparkline.svelte';
 
   let { id, data, selected }: NodeProps<Node<CrucibleNodeData>> = $props();
   const entry = $derived(CATALOG_BY_KIND[data.kind]);
   const metrics = $derived(sim.metricsByNode[id]);
+  const history = $derived(sim.nodeHistory[id]);
+
+  // Capacity gauge: ratio of in-flight to a soft ceiling. Without an
+  // explicit `capacity` prop on every node kind we estimate it from the
+  // historical inFlight + queue peaks. A nonzero queue is the strongest
+  // signal that we've crossed the comfortable ceiling, so it dominates.
+  const capacityRatio = $derived.by(() => {
+    if (!metrics) return 0;
+    const peakInFlight = history?.inFlight.reduce((m, v) => (v > m ? v : m), 0) ?? 0;
+    // Ceiling = max observed inFlight, padded up so we don't read 100%
+    // the moment a new high is set. Minimum of 4 keeps the gauge from
+    // pinning at 100% under trivial load.
+    const ceiling = Math.max(4, peakInFlight * 1.25, metrics.queueDepth + metrics.inFlight);
+    return Math.min(1, metrics.inFlight / ceiling);
+  });
+
+  // Health: error rate is the loudest signal, queue depth a secondary one,
+  // throughput colour is for chart not status.
+  const healthTier = $derived.by(() => {
+    if (!metrics) return 'idle' as const;
+    if (metrics.faulted) return 'fault' as const;
+    if (metrics.errorRate > 0.05) return 'fault' as const;
+    if (metrics.errorRate > 0 || metrics.queueDepth > 0) return 'warn' as const;
+    return 'ok' as const;
+  });
 
   // One-shot flash class when fault first appears. Rising-edge detection so
   // we don't re-trigger every snapshot tick while the fault stays active.
@@ -75,7 +101,17 @@
     aria-label="Connect from anywhere on this component"
   />
 
-  <div class="node-drag-handle mb-1.5 flex cursor-move items-center gap-2 border-b border-line pb-1.5">
+  <!--
+    Health stripe: 3px coloured rail on the left edge. Single-glance status
+    that survives even when the node is unselected on a busy canvas.
+  -->
+  <span
+    class="crucible-status-stripe"
+    data-tier={healthTier}
+    aria-hidden="true"
+  ></span>
+
+  <div class="node-drag-handle mb-1.5 flex cursor-grab items-center gap-2 border-b border-line pb-1.5 active:cursor-grabbing">
     <entry.icon class="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
     <Tooltip content={entry.details} side="top">
       {#snippet children(id)}
@@ -112,36 +148,76 @@
     />
   </div>
 
-  <div class="crucible-node-body space-y-0.5 text-muted">
+  <div class="crucible-node-body space-y-1 text-muted">
     {#if metrics}
-      <div class="flex justify-between">
-        <Hint term="rps" />
-        <span class="text-ink tabular-nums">{fmtRate(metrics.throughput)}</span>
+      <!--
+        Capacity gauge: thin bar showing in-flight load relative to a
+        soft ceiling. Width-only fill so the animation stays on the
+        compositor (no layout). Tier colour matches the health stripe so
+        the two stay congruent at a glance.
+      -->
+      <div class="crucible-gauge" data-tier={healthTier} aria-hidden="true">
+        <span
+          class="crucible-gauge-fill"
+          style="width: {(capacityRatio * 100).toFixed(1)}%"
+        ></span>
       </div>
-      <div class="flex justify-between">
-        <Hint term="p50p99" />
-        <span class="text-ink tabular-nums">
-          {fmtLatency(metrics.p50)} / {fmtLatency(metrics.p99)}
+
+      <!--
+        Throughput row: number on the left, sparkline of recent history on
+        the right. Pulls the chart into the same line so we don't burn
+        another row of vertical space.
+      -->
+      <div class="flex items-center justify-between gap-2">
+        <Hint term="rps" />
+        <span class="flex min-w-0 items-center gap-1.5">
+          <Sparkline
+            values={history?.rps ?? []}
+            width={42}
+            height={12}
+            stroke="#58a6ff"
+            fill="#58a6ff"
+          />
+          <span class="text-ink tabular-nums">{fmtRate(metrics.throughput)}</span>
         </span>
       </div>
-      <div class="flex justify-between">
+
+      <div class="flex items-center justify-between gap-2">
+        <Hint term="p50p99" />
+        <span class="flex min-w-0 items-center gap-1.5">
+          <Sparkline
+            values={history?.p99 ?? []}
+            width={42}
+            height={12}
+            stroke="#f0883e"
+            fill="#f0883e"
+            absoluteScale={false}
+          />
+          <span class="text-ink tabular-nums">
+            {fmtLatency(metrics.p50)} / {fmtLatency(metrics.p99)}
+          </span>
+        </span>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
         <Hint term="inFlight" />
         <span class="text-ink tabular-nums">{metrics.inFlight}</span>
       </div>
+
       {#if metrics.queueDepth > 0}
-        <div class="flex justify-between">
+        <div class="flex items-center justify-between gap-2">
           <Hint term="queue" />
           <span class="text-warn tabular-nums">{metrics.queueDepth}</span>
         </div>
       {/if}
       {#if metrics.errorRate > 0}
-        <div class="flex justify-between">
+        <div class="flex items-center justify-between gap-2">
           <Hint term="errRate" />
           <span class="text-err tabular-nums">{(metrics.errorRate * 100).toFixed(1)}%</span>
         </div>
       {/if}
     {:else}
-      <div class="italic">idle</div>
+      <div class="italic">Idle — press Start to stream metrics</div>
     {/if}
   </div>
 
@@ -182,6 +258,80 @@
     position: relative;
     z-index: 1;
     pointer-events: none;
+  }
+  /*
+    Surgical pointer-events restore for Hint glossary terms inside the body
+    so their tooltips still fire on hover/focus. The dotted-underline span
+    is small enough that user can still initiate a connection from the
+    surrounding gaps in the body, which stay pointer-events:none.
+  */
+  .crucible-node > :global(.crucible-node-body .crucible-hint) {
+    pointer-events: auto;
+  }
+
+  /* Health stripe on left edge. Coloured rail, single-glance status. */
+  :global(.crucible-status-stripe) {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    border-top-left-radius: inherit;
+    border-bottom-left-radius: inherit;
+    background: #30363d;
+    transition: background-color 220ms ease;
+    z-index: 1;
+    pointer-events: none;
+  }
+  :global(.crucible-status-stripe[data-tier='idle']) {
+    background: #30363d;
+  }
+  :global(.crucible-status-stripe[data-tier='ok']) {
+    background: #3fb950;
+    box-shadow: 0 0 8px rgba(63, 185, 80, 0.5);
+  }
+  :global(.crucible-status-stripe[data-tier='warn']) {
+    background: #f0883e;
+    box-shadow: 0 0 8px rgba(240, 136, 62, 0.5);
+  }
+  :global(.crucible-status-stripe[data-tier='fault']) {
+    background: #f85149;
+    box-shadow: 0 0 10px rgba(248, 81, 73, 0.6);
+  }
+
+  /* Thin capacity gauge under the header. Fill is width-animated only. */
+  :global(.crucible-gauge) {
+    position: relative;
+    height: 3px;
+    width: 100%;
+    border-radius: 2px;
+    background: rgba(48, 54, 61, 0.7);
+    overflow: hidden;
+    pointer-events: none;
+  }
+  :global(.crucible-gauge-fill) {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: #58a6ff;
+    transition: width 220ms ease, background-color 220ms ease;
+    will-change: width;
+  }
+  :global(.crucible-gauge[data-tier='ok'] .crucible-gauge-fill) {
+    background: #3fb950;
+  }
+  :global(.crucible-gauge[data-tier='warn'] .crucible-gauge-fill) {
+    background: #f0883e;
+  }
+  :global(.crucible-gauge[data-tier='fault'] .crucible-gauge-fill) {
+    background: #f85149;
+  }
+  :global(.crucible-gauge[data-tier='idle'] .crucible-gauge-fill) {
+    background: #58a6ff;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.crucible-status-stripe),
+    :global(.crucible-gauge-fill) {
+      transition: none;
+    }
   }
   :global(.svelte-flow .crucible-handle--cover:hover),
   :global(.svelte-flow .crucible-handle--cover.connectingfrom),
