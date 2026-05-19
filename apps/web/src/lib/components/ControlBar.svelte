@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Play, Pause, Square, Gauge, Activity, RotateCcw } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
@@ -31,18 +32,18 @@
   let sliderValue = $state<number>(rpsToSlider(100));
   const globalRps = $derived(sliderToRps(sliderValue));
 
-  function applyRpsToAllSources() {
-    for (const n of design.nodes) {
-      if (n.data.kind === 'source') {
-        design.updateNodeProps(n.id, { rps: globalRps });
-        sim.setRPS(n.id, globalRps);
-      }
-    }
-  }
-
+  // Wrap the iteration in `untrack` so reading + writing `design.nodes`
+  // doesn't retrigger this effect — only changes to globalRps should.
   $effect(() => {
-    void globalRps;
-    applyRpsToAllSources();
+    const rps = globalRps;
+    untrack(() => {
+      for (const n of design.nodes) {
+        if (n.data.kind !== 'source') continue;
+        if (n.data.props.rps === rps) continue; // no-op write would still re-render
+        design.updateNodeProps(n.id, { rps });
+        sim.setRPS(n.id, rps);
+      }
+    });
   });
 
   function onSpeed(v: number) {

@@ -53,7 +53,10 @@ function createSimStore() {
     error = null;
     state = 'loading';
     const w = ensureWorker();
-    const spec = design.toSpec();
+    // Svelte 5 $state values are Proxies that structured clone can't
+    // serialize. JSON round-trip strips the reactive layer and leaves
+    // plain data postMessage can transfer to the worker.
+    const spec = JSON.parse(JSON.stringify(design.toSpec()));
     w.postMessage({ type: 'load', spec });
     w.postMessage({ type: 'start', speed });
   }
