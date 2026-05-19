@@ -26,7 +26,14 @@
 
   function openMenu(event: MouseEvent, target: CtxTarget) {
     event.preventDefault();
-    ctx = { x: event.clientX, y: event.clientY, target };
+    event.stopPropagation();
+    // Defer the state write so the contextmenu event finishes bubbling
+    // before the ContextMenu mounts its svelte:window listeners. Without
+    // this, the same right-click would reach the window listener and
+    // immediately close the menu we are about to open.
+    queueMicrotask(() => {
+      ctx = { x: event.clientX, y: event.clientY, target };
+    });
   }
 
   function onDragOver(e: DragEvent) {
