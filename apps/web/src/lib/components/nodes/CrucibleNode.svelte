@@ -9,6 +9,21 @@
   const entry = $derived(CATALOG_BY_KIND[data.kind]);
   const metrics = $derived(sim.metricsByNode[id]);
 
+  // One-shot flash class when fault first appears. Rising-edge detection so
+  // we don't re-trigger every snapshot tick while the fault stays active.
+  let flashing = $state(false);
+  let prevFaulted = false;
+  $effect(() => {
+    const f = metrics?.faulted ?? false;
+    if (f && !prevFaulted) {
+      flashing = true;
+      const t = setTimeout(() => (flashing = false), 700);
+      prevFaulted = f;
+      return () => clearTimeout(t);
+    }
+    prevFaulted = f;
+  });
+
   function fmtLatency(ns: number): string {
     if (!ns) return '—';
     if (ns < 1_000) return `${ns}ns`;
@@ -37,10 +52,11 @@
 <div
   role="group"
   aria-label={ariaSummary}
-  class="rounded-lg border bg-panel px-3 py-2 font-mono text-xs shadow-lg ring-1
+  class="crucible-node rounded-lg border bg-panel px-3 py-2 font-mono text-xs shadow-lg ring-1
          transition-colors
          {selected ? 'ring-accent' : 'ring-line'}
-         {metrics?.faulted ? 'border-err' : 'border-line'}"
+         {metrics?.faulted ? 'border-err' : 'border-line'}
+         {flashing ? 'crucible-node-flash' : ''}"
   style="min-width: 180px;"
 >
   <Handle
@@ -101,31 +117,70 @@
 
 <style>
   :global(.svelte-flow .crucible-handle) {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border-radius: 9999px;
     background: var(--crucible-accent, #58a6ff);
     border: 2px solid var(--crucible-panel, #0d1117);
     transition: transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
   }
+  /* Invisible padded hit-target so users don't need pixel-perfect aim.
+     Extends ~10px in every direction without affecting the visible dot. */
+  :global(.svelte-flow .crucible-handle::before) {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 9999px;
+  }
   :global(.svelte-flow .crucible-handle:hover),
   :global(.svelte-flow .crucible-handle.connectingfrom),
   :global(.svelte-flow .crucible-handle.connectionindicator) {
     transform: scale(1.35);
-    box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.18);
+    box-shadow: 0 0 0 5px rgba(88, 166, 255, 0.22);
+  }
+  /* Valid drop target during a drag — green pulse pulls the eye. */
+  :global(.svelte-flow .crucible-handle.valid) {
+    background: #3fb950;
+    box-shadow: 0 0 0 6px rgba(63, 185, 80, 0.28);
   }
   :global(.svelte-flow .crucible-handle--source) {
-    right: -8px;
+    right: -9px;
   }
   :global(.svelte-flow .crucible-handle--target) {
-    left: -8px;
+    left: -9px;
+  }
+  .crucible-node {
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+    transform-origin: center;
+  }
+  .crucible-node-flash {
+    animation: crucibleFault 700ms ease-out 1;
+  }
+  @keyframes crucibleFault {
+    0% {
+      box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.55);
+    }
+    60% {
+      box-shadow: 0 0 0 12px rgba(248, 81, 73, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(248, 81, 73, 0);
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.svelte-flow .crucible-handle) {
       transition: none;
     }
-    :global(.svelte-flow .crucible-handle:hover) {
+    :global(.svelte-flow .crucible-handle:hover),
+    :global(.svelte-flow .crucible-handle.connectingfrom),
+    :global(.svelte-flow .crucible-handle.connectionindicator) {
       transform: none;
+    }
+    .crucible-node {
+      transition: none;
+    }
+    .crucible-node-flash {
+      animation: none;
     }
   }
 </style>

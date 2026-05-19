@@ -3,12 +3,14 @@
     SvelteFlow,
     useSvelteFlow,
     ConnectionMode,
+    ConnectionLineType,
     Background,
     Controls,
     MiniMap,
     type NodeTypes,
     type EdgeTypes,
-    type Connection
+    type Connection,
+    type Edge
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import CrucibleNode from '$lib/components/nodes/CrucibleNode.svelte';
@@ -67,6 +69,15 @@
       }
     ];
   }
+
+  // Reject self-loops and duplicate edges before SvelteFlow fires onConnect.
+  // Strict mode already prevents source→source / target→target, so here we
+  // only need to enforce graph-level rules.
+  function isValidConnection(conn: Edge | Connection): boolean {
+    if (!conn.source || !conn.target) return false;
+    if (conn.source === conn.target) return false;
+    return !design.edges.some((e) => e.source === conn.source && e.target === conn.target);
+  }
 </script>
 
 <div
@@ -85,8 +96,10 @@
     defaultEdgeOptions={{ type: 'flow' }}
     deleteKey={['Delete', 'Backspace']}
     multiSelectionKey={['Shift', 'Meta', 'Control']}
-    connectionRadius={40}
-    connectionMode={ConnectionMode.Loose}
+    connectionRadius={28}
+    connectionMode={ConnectionMode.Strict}
+    connectionLineType={ConnectionLineType.Bezier}
+    {isValidConnection}
     onconnect={onConnect}
     onnodeclick={({ node }) => onSelect(node.id)}
     onpaneclick={() => {

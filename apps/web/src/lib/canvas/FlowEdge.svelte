@@ -49,6 +49,14 @@
   });
 
   const dashAnim = $derived(flow > 0 && !reduceMotion);
+
+  // Packet dots travelling along the edge path. Count scales with intensity
+  // so a single trickle shows one dot, a saturated link shows three. Period
+  // shrinks with intensity — fast lines feel faster.
+  const showPackets = $derived(flow > 0 && !reduceMotion);
+  const packetCount = $derived(1 + Math.round(intensity * 2));
+  const packetDur = $derived(Math.max(0.6, 1.8 - intensity * 1.2));
+  const packetRadius = $derived(2 + intensity * 1.5);
 </script>
 
 <BaseEdge
@@ -57,6 +65,25 @@
   style="stroke:{stroke}; stroke-width:{1 + intensity * 3}px;"
   class={dashAnim ? 'crucible-edge-flow' : ''}
 />
+
+{#if showPackets}
+  {#each Array(packetCount) as _, i (i)}
+    <circle
+      r={packetRadius}
+      fill={stroke}
+      opacity="0.9"
+      style="filter: drop-shadow(0 0 3px {stroke});"
+    >
+      <animateMotion
+        dur="{packetDur}s"
+        repeatCount="indefinite"
+        path={edgePath}
+        begin="{(i * packetDur) / packetCount}s"
+        rotate="auto"
+      />
+    </circle>
+  {/each}
+{/if}
 
 <style>
   :global(.crucible-edge-flow) {
