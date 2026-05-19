@@ -153,7 +153,14 @@
     seed:&nbsp;<span class="tabular-nums">{design.seed}</span>
   </button>
 
-  <div class="ml-auto" aria-live="polite" aria-atomic="false">
+  <div class="ml-auto flex items-center gap-3" aria-live="polite" aria-atomic="false">
+    {#if sim.error}
+      <span class="rounded border border-err px-2 py-0.5 text-err" title={sim.error}>
+        sim error: {sim.error.length > 60 ? sim.error.slice(0, 60) + '…' : sim.error}
+      </span>
+    {:else if sim.state === 'loading'}
+      <span class="text-muted">loading sim…</span>
+    {/if}
     {#if sim.snapshot}
       <div class="flex gap-3 text-muted">
         <span>born <span class="text-ink tabular-nums">{numberFmt.format(sim.snapshot.born)}</span></span>

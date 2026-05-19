@@ -46,13 +46,25 @@ async function bootWasm(): Promise<void> {
   importScripts('/wasm_exec.js');
   const go = new Go();
   const resp = await fetch('/sim.wasm');
+  if (!resp.ok) throw new Error(`fetch /sim.wasm failed: ${resp.status}`);
   const bytes = await resp.arrayBuffer();
   const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
   // run() returns when main() exits. Our main blocks on `select{}` so this
-  // promise stays pending — start the run without awaiting.
-  void go.run(instance);
-  // give Go a microtask to register the `crucible` global
-  await new Promise<void>((r) => setTimeout(r, 0));
+  // promise stays pending — start the run without awaiting. If Go panics
+  // during init, surface it instead of silently swallowing.
+  void go.run(instance).catch((e: unknown) => {
+    post({ type: 'error', payload: `wasm runtime: ${(e as Error).message}` });
+  });
+  // Go's main() registers `crucible` on globalThis after the WASM module
+  // hands control back. setTimeout(0) is not enough — poll until the
+  // global appears so callers don't race the runtime.
+  const deadline = Date.now() + 5000;
+  while (typeof (self as unknown as { crucible?: unknown }).crucible === 'undefined') {
+    if (Date.now() > deadline) {
+      throw new Error('wasm init timed out: crucible global never appeared');
+    }
+    await new Promise<void>((r) => setTimeout(r, 10));
+  }
 }
 
 function tickLoop() {
@@ -85,9 +97,23 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
           await bootWasm();
           loaded = true;
         }
-        const res = crucible.load(JSON.stringify(msg.spec));
-        if (typeof res === 'object' && 'error' in res) {
-          post({ type: 'error', payload: res.error });
+        // jsLoad in Go returns either {ok: true} (object) on success or a
+        // JSON string '{"error":"..."}' on failure (via errVal). Handle both.
+        const res = crucible.load(JSON.stringify(msg.spec)) as unknown;
+        if (typeof res === 'string') {
+          try {
+            const parsed = JSON.parse(res) as { error?: string };
+            if (parsed.error) {
+              post({ type: 'error', payload: parsed.error });
+              return;
+            }
+          } catch {
+            // not JSON — treat as opaque error
+            post({ type: 'error', payload: res });
+            return;
+          }
+        } else if (res && typeof res === 'object' && 'error' in (res as Record<string, unknown>)) {
+          post({ type: 'error', payload: String((res as { error: unknown }).error) });
           return;
         }
         post({ type: 'ready' });
