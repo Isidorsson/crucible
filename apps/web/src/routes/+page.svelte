@@ -32,7 +32,7 @@
     <main class="flex flex-1 overflow-hidden" aria-label="Editor">
       <Palette />
       <Canvas onSelect={(id) => (selectedId = id)} />
-      <Inspector {selected} />
+      <Inspector {selected} onSelect={(id) => (selectedId = id)} />
     </main>
   </SvelteFlowProvider>
 </div>

@@ -146,6 +146,36 @@ export const GLOSSARY = {
   templates: {
     term: 'templates',
     full: 'Pre-wired starter patterns — drop one to skip the boilerplate of connecting common topologies.'
+  },
+
+  // ── inspector actions ───────────────────────────────────────────────
+  duplicate: {
+    term: 'duplicate',
+    full: 'Copy this node with the same props, offset slightly so you can see the new one. Edges are not duplicated.'
+  },
+  resetProps: {
+    term: 'reset',
+    full: 'Restore this node’s properties to the catalog defaults for its kind. Position and connections stay.'
+  },
+  deleteNode: {
+    term: 'delete',
+    full: 'Remove this node from the canvas. Any edges touching it are removed too.'
+  },
+  liveMetrics: {
+    term: 'live',
+    full: 'Read-only snapshot from the running simulator. Updates ~30× per second; pause to freeze.'
+  },
+  autoClearFault: {
+    term: 'auto-clear',
+    full: 'Inject the fault for this many seconds, then automatically clear it. Set 0 for manual clear only.'
+  },
+  activeFault: {
+    term: 'active',
+    full: 'The fault currently injected on this node. Click another chaos button to swap, or Clear to remove.'
+  },
+  clearFault: {
+    term: 'clear',
+    full: 'Remove any active fault from this node. Equivalent to clicking the active chaos button a second time.'
   }
 } as const satisfies Record<string, GlossaryEntry>;
 

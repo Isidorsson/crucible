@@ -192,7 +192,7 @@
                 {#each group.items as entry (entry.kind)}
                   <li>
                     <Tooltip
-                      content="{entry.description} Drag onto canvas, or press Enter to insert at center."
+                      content="{entry.details} Drag onto canvas, or press Enter to insert at center."
                       side="right"
                       block
                     >

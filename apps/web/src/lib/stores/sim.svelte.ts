@@ -22,6 +22,16 @@ function createSimStore() {
   let edgeFlowByKey = $state<Record<string, number>>({});
   let error = $state<string | null>(null);
 
+  // Sim worker only reports `faulted: bool` per node; it never tells us
+  // *which* fault is active. The UI needs that to highlight the right
+  // chaos button and to schedule an auto-clear. Mirror it locally — the
+  // store is the only place that mutates faults, so this map stays in
+  // sync with the worker by construction.
+  let activeFaultByNode = $state<Record<string, FaultKind>>({});
+  // Auto-clear timers keyed by node id. Cleared on stop() and whenever
+  // a new fault is injected on the same node.
+  const faultTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   let worker: Worker | null = null;
   // Wall time of the previous snapshot — used to convert per-window edge
   // counts into a true rate (rps) so we don't display "packets per ~33ms".
@@ -110,6 +120,9 @@ function createSimStore() {
     metricsByNode = {};
     edgeFlowByKey = {};
     lastSnapshotWallMs = 0;
+    for (const t of faultTimers.values()) clearTimeout(t);
+    faultTimers.clear();
+    activeFaultByNode = {};
   }
 
   function setSpeed(v: number) {
@@ -122,7 +135,46 @@ function createSimStore() {
   }
 
   function injectFault(nodeId: string, kind: FaultKind, on: boolean) {
+    // Clear any pending auto-clear for this node — superseded by this call.
+    const existing = faultTimers.get(nodeId);
+    if (existing) {
+      clearTimeout(existing);
+      faultTimers.delete(nodeId);
+    }
     worker?.postMessage({ type: 'injectFault', nodeId, kind, on });
+    if (on && kind !== 0) {
+      activeFaultByNode = { ...activeFaultByNode, [nodeId]: kind };
+    } else {
+      const next = { ...activeFaultByNode };
+      delete next[nodeId];
+      activeFaultByNode = next;
+    }
+  }
+
+  // Inject a fault and automatically clear it after `durationMs` of wall
+  // time. The clear runs through `injectFault` so the active-fault map and
+  // any subsequent timers stay consistent.
+  function injectFaultFor(nodeId: string, kind: FaultKind, durationMs: number) {
+    injectFault(nodeId, kind, true);
+    if (durationMs <= 0) return;
+    const t = setTimeout(() => {
+      faultTimers.delete(nodeId);
+      injectFault(nodeId, 0, false);
+    }, durationMs);
+    faultTimers.set(nodeId, t);
+  }
+
+  // Swap to a different fault kind on the same node. If the requested
+  // kind is already active, this is a no-op so a double-click doesn't
+  // flicker.
+  function setFault(nodeId: string, kind: FaultKind) {
+    if (activeFaultByNode[nodeId] === kind) return;
+    injectFault(nodeId, kind, true);
+  }
+
+  function clearFault(nodeId: string) {
+    if (!activeFaultByNode[nodeId]) return;
+    injectFault(nodeId, 0, false);
   }
 
   return {
@@ -144,13 +196,19 @@ function createSimStore() {
     get error() {
       return error;
     },
+    get activeFaultByNode() {
+      return activeFaultByNode;
+    },
     start,
     pause,
     resume,
     stop,
     setSpeed,
     setRPS,
-    injectFault
+    injectFault,
+    injectFaultFor,
+    setFault,
+    clearFault
   };
 }
 

@@ -70,7 +70,7 @@
 
   <div class="mb-1.5 flex items-center gap-2 border-b border-line pb-1.5">
     <entry.icon class="h-4 w-4 text-accent" aria-hidden="true" />
-    <Tooltip content={entry.description} side="top">
+    <Tooltip content={entry.details} side="top">
       {#snippet children(id)}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <span
