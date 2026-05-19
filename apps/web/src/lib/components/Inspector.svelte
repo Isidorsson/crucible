@@ -16,6 +16,8 @@
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import Hint from './Hint.svelte';
   import Tooltip from './Tooltip.svelte';
+  import NumberField from './NumberField.svelte';
+  import SelectField, { type SelectOption } from './SelectField.svelte';
   import { GLOSSARY } from './glossary';
 
   let {
@@ -105,9 +107,30 @@
     'flex h-7 w-7 items-center justify-center rounded border border-line bg-bg text-muted ' +
     'transition-colors hover:border-accent hover:text-ink ' +
     'focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-  const propInput =
-    'mt-1 w-full rounded border border-line bg-bg px-2 py-1 font-mono ' +
-    'focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent';
+
+  // Load-balancer strategy options. Stored as camelCase (matches sim
+  // engine + LBStrategy type) but rendered with human-readable labels.
+  const STRATEGY_OPTIONS: SelectOption[] = [
+    { value: 'roundRobin', label: 'Round-robin' },
+    { value: 'leastInFlight', label: 'Least in-flight' },
+    { value: 'random', label: 'Random' }
+  ];
+
+  // Editor surfaces mean/std in milliseconds for sanity; the sim engine
+  // stores nanoseconds. Convert on read + write.
+  const NS_PER_MS = 1_000_000;
+  function nsToMs(ns: number | undefined): number {
+    return ns ? +(ns / NS_PER_MS).toFixed(3) : 0;
+  }
+  function msToNs(ms: number): number {
+    return Math.max(0, Math.round(ms * NS_PER_MS));
+  }
+  function pctToFrac(pct: number): number {
+    return Math.max(0, Math.min(1, pct / 100));
+  }
+  function fracToPct(f: number | undefined): number {
+    return f === undefined ? 0 : Math.round(f * 100);
+  }
 </script>
 
 <aside
@@ -255,90 +278,80 @@
         {#if engineKind === 'source'}
           <div>
             <Hint term="rps" />
-            <label class="sr-only" for="prop-rps-{selected.id}">requests per second</label>
-            <input
-              id="prop-rps-{selected.id}"
-              name="rps"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              min="0"
-              step="10"
-              value={selected.data.props.rps ?? 100}
-              oninput={(e) => setProp('rps', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-rps-{selected.id}"
+                name="rps"
+                value={selected.data.props.rps ?? 100}
+                min={0}
+                step={10}
+                suffix="rps"
+                ariaLabel="requests per second"
+                oninput={(e) => setProp('rps', +e.currentTarget.value)}
+              />
+            </div>
           </div>
         {/if}
 
         {#if engineKind === 'service' || engineKind === 'database'}
           <div>
             <Hint term="capacity" />
-            <label class="sr-only" for="prop-capacity-{selected.id}">capacity</label>
-            <input
-              id="prop-capacity-{selected.id}"
-              name="capacity"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              min="1"
-              value={selected.data.props.capacity ?? 50}
-              oninput={(e) => setProp('capacity', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-capacity-{selected.id}"
+                name="capacity"
+                value={selected.data.props.capacity ?? 50}
+                min={1}
+                suffix="slots"
+                ariaLabel="capacity"
+                oninput={(e) => setProp('capacity', +e.currentTarget.value)}
+              />
+            </div>
           </div>
           <div>
             <Hint term="queueLimit" />
-            <label class="sr-only" for="prop-queue-{selected.id}">queue limit</label>
-            <input
-              id="prop-queue-{selected.id}"
-              name="queueLimit"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              min="0"
-              value={selected.data.props.queueLimit ?? 500}
-              oninput={(e) => setProp('queueLimit', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-queue-{selected.id}"
+                name="queueLimit"
+                value={selected.data.props.queueLimit ?? 500}
+                min={0}
+                suffix="slots"
+                ariaLabel="queue limit"
+                oninput={(e) => setProp('queueLimit', +e.currentTarget.value)}
+              />
+            </div>
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
               <Hint term="meanNs" />
-              <label class="sr-only" for="prop-mean-{selected.id}">mean latency (ns)</label>
-              <input
-                id="prop-mean-{selected.id}"
-                name="meanNs"
-                type="number"
-                inputmode="numeric"
-                autocomplete="off"
-                spellcheck="false"
-                min="0"
-                step="100000"
-                value={selected.data.props.meanNs ?? 0}
-                oninput={(e) => setProp('meanNs', +(e.target as HTMLInputElement).value)}
-                class={propInput}
-              />
+              <div class="mt-1">
+                <NumberField
+                  id="prop-mean-{selected.id}"
+                  name="meanMs"
+                  value={nsToMs(selected.data.props.meanNs)}
+                  min={0}
+                  step={0.1}
+                  suffix="ms"
+                  ariaLabel="mean latency in milliseconds"
+                  oninput={(e) => setProp('meanNs', msToNs(+e.currentTarget.value))}
+                />
+              </div>
             </div>
             <div>
               <Hint term="stdNs" />
-              <label class="sr-only" for="prop-std-{selected.id}">std deviation (ns)</label>
-              <input
-                id="prop-std-{selected.id}"
-                name="stdNs"
-                type="number"
-                inputmode="numeric"
-                autocomplete="off"
-                spellcheck="false"
-                min="0"
-                step="100000"
-                value={selected.data.props.stdNs ?? 0}
-                oninput={(e) => setProp('stdNs', +(e.target as HTMLInputElement).value)}
-                class={propInput}
-              />
+              <div class="mt-1">
+                <NumberField
+                  id="prop-std-{selected.id}"
+                  name="stdMs"
+                  value={nsToMs(selected.data.props.stdNs)}
+                  min={0}
+                  step={0.1}
+                  suffix="ms"
+                  ariaLabel="latency std deviation in milliseconds"
+                  oninput={(e) => setProp('stdNs', msToNs(+e.currentTarget.value))}
+                />
+              </div>
             </div>
           </div>
         {/if}
@@ -346,93 +359,83 @@
         {#if engineKind === 'cache'}
           <div>
             <Hint term="hitRate" />
-            <label class="sr-only" for="prop-hit-{selected.id}">hit rate</label>
-            <input
-              id="prop-hit-{selected.id}"
-              name="hitRate"
-              type="number"
-              inputmode="decimal"
-              autocomplete="off"
-              spellcheck="false"
-              min="0"
-              max="1"
-              step="0.05"
-              value={selected.data.props.hitRate ?? 0.8}
-              oninput={(e) => setProp('hitRate', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-hit-{selected.id}"
+                name="hitRatePct"
+                value={fracToPct(selected.data.props.hitRate ?? 0.8)}
+                min={0}
+                max={100}
+                step={1}
+                suffix="%"
+                ariaLabel="hit rate percent"
+                oninput={(e) => setProp('hitRate', pctToFrac(+e.currentTarget.value))}
+              />
+            </div>
           </div>
           <div>
             <Hint term="capacity" />
-            <label class="sr-only" for="prop-capacity-{selected.id}">capacity</label>
-            <input
-              id="prop-capacity-{selected.id}"
-              name="capacity"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              min="1"
-              value={selected.data.props.capacity ?? 1000}
-              oninput={(e) => setProp('capacity', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-capacity-{selected.id}"
+                name="capacity"
+                value={selected.data.props.capacity ?? 1000}
+                min={1}
+                suffix="keys"
+                ariaLabel="cache capacity"
+                oninput={(e) => setProp('capacity', +e.currentTarget.value)}
+              />
+            </div>
           </div>
         {/if}
 
         {#if engineKind === 'loadbalancer'}
           <div>
             <Hint term="strategy" />
-            <label class="sr-only" for="prop-strategy-{selected.id}">strategy</label>
-            <select
-              id="prop-strategy-{selected.id}"
-              name="strategy"
-              value={selected.data.props.strategy ?? 'roundRobin'}
-              onchange={(e) =>
-                setProp('strategy', (e.target as HTMLSelectElement).value as LBStrategy)}
-              class={propInput}
-            >
-              <option value="roundRobin">roundRobin</option>
-              <option value="leastInFlight">leastInFlight</option>
-              <option value="random">random</option>
-            </select>
+            <div class="mt-1">
+              <SelectField
+                id="prop-strategy-{selected.id}"
+                name="strategy"
+                value={selected.data.props.strategy ?? 'roundRobin'}
+                options={STRATEGY_OPTIONS}
+                ariaLabel="load-balancer strategy"
+                onchange={(e) =>
+                  setProp('strategy', e.currentTarget.value as LBStrategy)}
+              />
+            </div>
           </div>
         {/if}
 
         {#if engineKind === 'queue'}
           <div>
             <Hint term="drainRPS" />
-            <label class="sr-only" for="prop-drain-{selected.id}">drain rps</label>
-            <input
-              id="prop-drain-{selected.id}"
-              name="drainRPS"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              min="0"
-              step="10"
-              value={selected.data.props.drainRPS ?? 100}
-              oninput={(e) => setProp('drainRPS', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-drain-{selected.id}"
+                name="drainRPS"
+                value={selected.data.props.drainRPS ?? 100}
+                min={0}
+                step={10}
+                suffix="rps"
+                ariaLabel="drain rate"
+                oninput={(e) => setProp('drainRPS', +e.currentTarget.value)}
+              />
+            </div>
           </div>
           <div>
             <Hint term="maxQueueSize" />
-            <label class="sr-only" for="prop-max-{selected.id}">max queue size</label>
-            <input
-              id="prop-max-{selected.id}"
-              name="max"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              spellcheck="false"
-              min="1"
-              step="1000"
-              value={selected.data.props.max ?? 10000}
-              oninput={(e) => setProp('max', +(e.target as HTMLInputElement).value)}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-max-{selected.id}"
+                name="max"
+                value={selected.data.props.max ?? 10000}
+                min={1}
+                step={1000}
+                suffix="msgs"
+                ariaLabel="max queue size"
+                oninput={(e) => setProp('max', +e.currentTarget.value)}
+              />
+            </div>
           </div>
         {/if}
       </section>
@@ -492,21 +495,19 @@
         <div class="flex items-end gap-2">
           <div class="flex-1">
             <Hint term="autoClearFault" />
-            <label class="sr-only" for="prop-fault-dur-{selected.id}"
-              >auto-clear duration in seconds</label
-            >
-            <input
-              id="prop-fault-dur-{selected.id}"
-              name="autoClearSec"
-              type="number"
-              inputmode="numeric"
-              autocomplete="off"
-              min="0"
-              step="1"
-              placeholder="0 = manual"
-              bind:value={faultDurationSec}
-              class={propInput}
-            />
+            <div class="mt-1">
+              <NumberField
+                id="prop-fault-dur-{selected.id}"
+                name="autoClearSec"
+                value={faultDurationSec}
+                min={0}
+                step={1}
+                suffix="s"
+                placeholder="0 = manual"
+                ariaLabel="auto-clear duration in seconds"
+                oninput={(e) => (faultDurationSec = +e.currentTarget.value)}
+              />
+            </div>
           </div>
           <Tooltip content={GLOSSARY.clearFault.full} side="top">
             {#snippet children(id)}
@@ -516,7 +517,7 @@
                 disabled={activeFault === FaultNone}
                 aria-label="Clear active fault"
                 aria-describedby={id}
-                class="flex h-[30px] items-center gap-1 rounded border border-line bg-bg px-2 text-xs
+                class="flex h-[34px] items-center gap-1 rounded border border-line bg-bg px-2.5 text-xs
                        transition-colors hover:border-accent
                        focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
                        disabled:cursor-not-allowed disabled:opacity-40"

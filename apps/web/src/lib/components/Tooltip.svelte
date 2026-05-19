@@ -18,6 +18,22 @@
 
   type Side = 'top' | 'bottom' | 'left' | 'right';
 
+  // Portal action: reparent the bubble to <body> so it escapes any
+  // ancestor with `transform`, `filter`, or `overflow: hidden`. Without
+  // this, tooltips inside SvelteFlow nodes (which transform their
+  // viewport) render relative to the flow's transformed coords and get
+  // clipped by the flow container.
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return {
+      destroy() {
+        if (node.parentNode === document.body) {
+          document.body.removeChild(node);
+        }
+      }
+    };
+  }
+
   let {
     content,
     side = 'top',
@@ -146,6 +162,7 @@
 {#if open}
   <span
     bind:this={bubbleEl}
+    use:portal
     role="tooltip"
     {id}
     class="crucible-tooltip side-{actualSide}"
