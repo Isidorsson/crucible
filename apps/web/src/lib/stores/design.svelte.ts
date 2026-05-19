@@ -36,6 +36,37 @@ function createDesignStore() {
     edges = edges.filter((e) => e.source !== id && e.target !== id);
   }
 
+  function removeNodes(ids: string[]) {
+    if (ids.length === 0) return;
+    const drop = new Set(ids);
+    nodes = nodes.filter((n) => !drop.has(n.id));
+    edges = edges.filter((e) => !drop.has(e.source) && !drop.has(e.target));
+  }
+
+  function removeEdge(id: string) {
+    edges = edges.filter((e) => e.id !== id);
+  }
+
+  function removeEdges(ids: string[]) {
+    if (ids.length === 0) return;
+    const drop = new Set(ids);
+    edges = edges.filter((e) => !drop.has(e.id));
+  }
+
+  function duplicateNode(id: string) {
+    const src = nodes.find((n) => n.id === id);
+    if (!src) return null;
+    const copy: Node<CrucibleNodeData> = {
+      ...src,
+      id: nanoid(8),
+      position: { x: src.position.x + 40, y: src.position.y + 40 },
+      data: { ...src.data, props: { ...src.data.props } },
+      selected: false
+    };
+    nodes = [...nodes, copy];
+    return copy.id;
+  }
+
   function updateNodeProps(id: string, patch: Partial<NodeProps>) {
     nodes = nodes.map((n) =>
       n.id === id ? { ...n, data: { ...n.data, props: { ...n.data.props, ...patch } } } : n
@@ -75,6 +106,10 @@ function createDesignStore() {
     },
     addNode,
     removeNode,
+    removeNodes,
+    removeEdge,
+    removeEdges,
+    duplicateNode,
     updateNodeProps,
     toSpec
   };
