@@ -6,6 +6,7 @@
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
+  import Scrubber from './Scrubber.svelte';
   import { GLOSSARY } from './glossary';
 
   // Speed presets. "max" sends a large finite multiplier (1e9); worker
@@ -36,91 +37,18 @@
 
   let globalRps = $state<number>(100);
 
-  // Editable/scrubbable rps field. The field lifts into edit mode on click
-  // or focus; drag (or arrow keys) scrubs by the current decade so the
-  // step matches the magnitude — dragging at 1k tunes by 100, dragging at
-  // 10 tunes by 1.
-  let editing = $state(false);
-  let editValue = $state('');
-  let editInput = $state<HTMLInputElement | null>(null);
-
   function setRps(v: number) {
     const clamped = Math.max(1, Math.min(1_000_000, Math.round(v)));
     if (clamped === globalRps) return;
     globalRps = clamped;
   }
 
-  function beginEdit() {
-    editValue = String(globalRps);
-    editing = true;
-    queueMicrotask(() => {
-      editInput?.focus();
-      editInput?.select();
-    });
-  }
-
-  function commitEdit() {
-    const parsed = Number(editValue.replace(/[, _]/g, ''));
-    if (Number.isFinite(parsed) && parsed > 0) setRps(parsed);
-    editing = false;
-  }
-
-  function onEditKey(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitEdit();
-      return;
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      editing = false;
-      return;
-    }
-  }
-
-  // Pointer-scrub: drag the number left/right to change. Step scales with
-  // the current decade so the drag feel stays consistent across the log
-  // range — Figma/Blender-style.
-  let scrubStartX = 0;
-  let scrubStartVal = 0;
-  function onScrubDown(e: PointerEvent) {
-    if (editing) return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    scrubStartX = e.clientX;
-    scrubStartVal = globalRps;
-  }
-  function onScrubMove(e: PointerEvent) {
-    if (editing) return;
-    const el = e.currentTarget as HTMLElement;
-    if (!el.hasPointerCapture(e.pointerId)) return;
-    const dx = e.clientX - scrubStartX;
-    if (Math.abs(dx) < 2) return;
-    // Step = 10% of starting decade, e.g. start at 100 → step 10/px.
-    const decade = Math.pow(10, Math.floor(Math.log10(Math.max(1, scrubStartVal))));
-    const step = Math.max(1, decade / 10);
-    // 2 px per step keeps the scrub feeling controlled, not skittish.
-    setRps(scrubStartVal + Math.round(dx / 2) * step);
-  }
-  function onScrubUp(e: PointerEvent) {
-    const el = e.currentTarget as HTMLElement;
-    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-  }
-
-  function onScrubKey(e: KeyboardEvent) {
-    if (editing) return;
-    const decade = Math.pow(10, Math.floor(Math.log10(Math.max(1, globalRps))));
-    const fine = Math.max(1, decade / 10);
-    const coarse = decade;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      setRps(globalRps + (e.shiftKey ? coarse : fine));
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      setRps(globalRps - (e.shiftKey ? coarse : fine));
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      beginEdit();
-    }
+  // Decade-aware step: fine = 10% of current decade, coarse = full decade.
+  // Shared by the rps scrubber so dragging feels uniform across the log
+  // range (10 at 100 rps, 1k at 10k rps, …).
+  function decadeStep(v: number): { fine: number; coarse: number } {
+    const decade = Math.pow(10, Math.floor(Math.log10(Math.max(1, v))));
+    return { fine: Math.max(1, decade / 10), coarse: decade };
   }
 
   // Wrap the iteration in `untrack` so reading + writing `design.nodes`
@@ -143,6 +71,59 @@
 
   function onSpeed(v: number) {
     sim.setSpeed(v);
+  }
+
+  // Speed scrubber: operates in "internal units" of hundredths of a multiplier
+  // (so step granularity stays integer-friendly: 1 unit = 0.01x). The "max"
+  // chip remains a sentinel that bypasses the scrubber — typing or scrubbing
+  // a value above 1000 gets clamped, "max" sets sim.speed = 1e9.
+  const SPEED_UNIT = 100; // 1 unit = 0.01x
+  const SPEED_SCRUB_MIN = 25; // 0.25x
+  const SPEED_SCRUB_MAX = 100_000; // 1000x
+  const speedIsMax = $derived(sim.speed >= 1e6);
+  // Treat sentinel speed as the scrubber's max so the UI never displays
+  // "10000000x" by accident; the scrubber still shows "max" via formatter.
+  const speedScrubValue = $derived(
+    speedIsMax ? SPEED_SCRUB_MAX : Math.round(sim.speed * SPEED_UNIT)
+  );
+
+  function commitSpeedScrub(units: number) {
+    const mult = units / SPEED_UNIT;
+    // Crossing past 1000x snaps to the "max" sentinel so the user can land
+    // there from a scrub without having to click the chip.
+    if (units >= SPEED_SCRUB_MAX) {
+      sim.setSpeed(1e9);
+    } else {
+      sim.setSpeed(mult);
+    }
+  }
+
+  function formatSpeed(units: number): string {
+    if (units >= SPEED_SCRUB_MAX) return 'max';
+    const m = units / SPEED_UNIT;
+    if (m >= 100) return `${Math.round(m)}x`;
+    if (m >= 10) return `${m.toFixed(0)}x`;
+    if (m >= 1) return `${m.toFixed(2).replace(/\.?0+$/, '')}x`;
+    return `${m.toFixed(2)}x`;
+  }
+
+  function parseSpeed(s: string): number {
+    const t = s.trim().toLowerCase();
+    if (t === 'max' || t === 'm') return SPEED_SCRUB_MAX;
+    const cleaned = t.replace(/[x×, _]/g, '');
+    const m = Number(cleaned);
+    if (!Number.isFinite(m) || m <= 0) return NaN;
+    return Math.round(m * SPEED_UNIT);
+  }
+
+  // Decade-flavoured step but tuned for fractional speeds: 0.05x near 1x,
+  // 1x near 10x, 10x near 100x — keeps the scrub feel proportional.
+  function speedStep(units: number): { fine: number; coarse: number } {
+    const m = units / SPEED_UNIT;
+    if (m < 1) return { fine: 5, coarse: 25 };          // 0.05x / 0.25x
+    if (m < 10) return { fine: 25, coarse: 100 };       // 0.25x / 1x
+    if (m < 100) return { fine: 100, coarse: 500 };     // 1x / 5x
+    return { fine: 500, coarse: 2500 };                  // 5x / 25x
   }
 
   function onPlayPause() {
@@ -234,6 +215,20 @@
         {/snippet}
       </Tooltip>
     {/each}
+
+    <Scrubber
+      value={speedScrubValue}
+      min={SPEED_SCRUB_MIN}
+      max={SPEED_SCRUB_MAX}
+      onCommit={commitSpeedScrub}
+      formatDisplay={formatSpeed}
+      formatEdit={(v) => formatSpeed(v)}
+      parseEdit={parseSpeed}
+      step={speedStep}
+      width="3.5rem"
+      label="speed multiplier"
+      tooltip="Click to type (e.g. 1.5x, max), drag to scrub, or use arrow keys (Shift = coarse step)."
+    />
   </div>
 
   <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
@@ -266,63 +261,17 @@
       </Tooltip>
     {/each}
 
-    <!--
-      Scrubbable + editable rps. Drag horizontally, arrow-key, or click to
-      type. Step auto-scales with the current decade so the feel stays
-      uniform across the log range.
-    -->
-    <Tooltip
-      content="Click to type, drag horizontally to scrub, or use arrow keys (Shift = ×10 step)."
-      side="bottom"
-    >
-      {#snippet children(tipId)}
-        {#if editing}
-          <label class="sr-only" for="rps-edit">Global RPS</label>
-          <input
-            id="rps-edit"
-            name="rps-scale"
-            bind:this={editInput}
-            bind:value={editValue}
-            onblur={commitEdit}
-            onkeydown={onEditKey}
-            type="number"
-            inputmode="numeric"
-            min="1"
-            max="1000000"
-            autocomplete="off"
-            spellcheck="false"
-            aria-label="Type global rps"
-            aria-describedby={tipId}
-            class="w-20 rounded border border-accent bg-bg px-1.5 py-1 text-right font-mono text-[11px]
-                   tabular-nums text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          />
-        {:else}
-          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-          <span
-            role="spinbutton"
-            tabindex="0"
-            aria-label="Custom rps"
-            aria-describedby={tipId}
-            aria-valuemin="1"
-            aria-valuemax="1000000"
-            aria-valuenow={globalRps}
-            aria-valuetext="{numberFmt.format(globalRps)} requests per second"
-            onpointerdown={onScrubDown}
-            onpointermove={onScrubMove}
-            onpointerup={onScrubUp}
-            onpointercancel={onScrubUp}
-            onkeydown={onScrubKey}
-            ondblclick={beginEdit}
-            onclick={beginEdit}
-            class="crucible-scrub min-w-[3.5rem] rounded border border-line bg-bg px-2 py-1 text-right
-                   font-mono text-[11px] tabular-nums text-ink hover:border-accent
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            {numberFmt.format(globalRps)}<span class="ml-1 text-[9px] text-muted">rps</span>
-          </span>
-        {/if}
-      {/snippet}
-    </Tooltip>
+    <Scrubber
+      value={globalRps}
+      min={1}
+      max={1_000_000}
+      onCommit={setRps}
+      formatDisplay={(v) => `${numberFmt.format(v)} rps`}
+      step={decadeStep}
+      width="5rem"
+      label="global rps"
+      tooltip="Click to type, drag horizontally to scrub, or use arrow keys (Shift = ×10 step)."
+    />
   </div>
 
   <div class="mx-2 h-5 w-px bg-line" aria-hidden="true"></div>
@@ -367,16 +316,3 @@
   </div>
 </div>
 
-<style>
-  /* Scrubbable rps value: ew-resize cursor on hover hints the drag, and
-     touch-action:none lets us own horizontal pointer gestures without
-     fighting the page from panning underneath on touch devices. */
-  .crucible-scrub {
-    cursor: ew-resize;
-    user-select: none;
-    touch-action: none;
-  }
-  .crucible-scrub:active {
-    cursor: grabbing;
-  }
-</style>
