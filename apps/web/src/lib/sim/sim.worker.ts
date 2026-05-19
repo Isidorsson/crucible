@@ -39,7 +39,6 @@ async function bootWasm(): Promise<void> {
   // Workers cannot use document.createElement; importScripts works for the
   // classic Go runtime but not for ES modules. We use fetch + instantiate.
   importScripts('/wasm_exec.js');
-  // @ts-expect-error Go is set by wasm_exec.js
   const go = new Go();
   const resp = await fetch('/sim.wasm');
   const bytes = await resp.arrayBuffer();

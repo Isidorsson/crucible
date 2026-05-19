@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Handle, Position, type NodeProps } from '@xyflow/svelte';
+  import { Handle, Position, type NodeProps, type Node } from '@xyflow/svelte';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import type { CrucibleNodeData } from '$lib/stores/design.svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { AlertTriangle } from '@lucide/svelte';
 
-  let { id, data, selected }: NodeProps<CrucibleNodeData> = $props();
+  let { id, data, selected }: NodeProps<Node<CrucibleNodeData>> = $props();
   const entry = $derived(CATALOG_BY_KIND[data.kind]);
   const metrics = $derived(sim.metricsByNode[id]);
 
