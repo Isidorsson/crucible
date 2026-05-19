@@ -12,7 +12,9 @@ type InMsg =
   | { type: 'stop' }
   | { type: 'setSpeed'; value: number }
   | { type: 'setRPS'; nodeId: string; rps: number }
-  | { type: 'injectFault'; nodeId: string; kind: FaultKind; on: boolean };
+  | { type: 'injectFault'; nodeId: string; kind: FaultKind; on: boolean }
+  | { type: 'addNode'; node: { id: string; kind: string; props: Record<string, unknown> } }
+  | { type: 'addEdge'; src: string; dst: string };
 
 type OutMsg =
   | { type: 'ready' }
@@ -167,6 +169,34 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
         if (!loaded) return;
         crucible.injectFault(msg.nodeId, msg.kind, msg.on);
         return;
+      case 'addNode': {
+        if (!loaded) return;
+        const res = crucible.addNode(JSON.stringify(msg.node)) as unknown;
+        if (typeof res === 'string') {
+          // Engine returns an error JSON string on failure; surface it
+          // so the UI can see why the new node didn't take traffic.
+          try {
+            const parsed = JSON.parse(res) as { error?: string };
+            if (parsed.error) post({ type: 'error', payload: parsed.error });
+          } catch {
+            post({ type: 'error', payload: res });
+          }
+        }
+        return;
+      }
+      case 'addEdge': {
+        if (!loaded) return;
+        const res = crucible.addEdge(msg.src, msg.dst) as unknown;
+        if (typeof res === 'string') {
+          try {
+            const parsed = JSON.parse(res) as { error?: string };
+            if (parsed.error) post({ type: 'error', payload: parsed.error });
+          } catch {
+            post({ type: 'error', payload: res });
+          }
+        }
+        return;
+      }
     }
   } catch (e) {
     post({ type: 'error', payload: (e as Error).message });

@@ -37,44 +37,55 @@ func Build(jsonBytes []byte) (*engine.Sim, []Bootstrapper, error) {
 	var boots []Bootstrapper
 
 	for _, n := range spec.Nodes {
-		switch n.Kind {
-		case "source":
-			rps := floatProp(n.Props, "rps", 100)
-			s := nodes.NewSource(n.ID, rps)
-			sim.AddNode(s)
-			boots = append(boots, s)
-		case "service":
-			cap := intProp(n.Props, "capacity", 50)
-			ql := intProp(n.Props, "queueLimit", 500)
-			mean := floatProp(n.Props, "meanNs", 2_000_000)
-			std := floatProp(n.Props, "stdNs", 1_000_000)
-			sim.AddNode(nodes.NewService(n.ID, cap, ql, mean, std))
-		case "loadbalancer":
-			strat := nodes.LBRoundRobin
-			switch n.Props["strategy"] {
-			case "leastInFlight":
-				strat = nodes.LBLeastInFlight
-			case "random":
-				strat = nodes.LBRandom
-			}
-			sim.AddNode(nodes.NewLoadBalancer(n.ID, strat))
-		case "cache":
-			hr := floatProp(n.Props, "hitRate", 0.8)
-			sim.AddNode(nodes.NewCache(n.ID, hr))
-		case "database":
-			sim.AddNode(nodes.NewDatabase(n.ID))
-		case "queue":
-			drain := floatProp(n.Props, "drainRPS", 100)
-			max := intProp(n.Props, "max", 10000)
-			q := nodes.NewQueue(n.ID, drain, max)
-			sim.AddNode(q)
-			boots = append(boots, q)
+		if b := AddNodeFromDef(sim, n); b != nil {
+			boots = append(boots, b)
 		}
 	}
 	for _, e := range spec.Edges {
 		sim.Connect(e.Src, e.Dst)
 	}
 	return sim, boots, nil
+}
+
+// AddNodeFromDef builds and inserts a single node into an existing sim,
+// returning a Bootstrapper if the kind needs a kickoff event (sources,
+// queues). Pulled out of Build so the WASM bridge can hot-add nodes
+// mid-run with the same construction logic.
+func AddNodeFromDef(sim *engine.Sim, n NodeDef) Bootstrapper {
+	switch n.Kind {
+	case "source":
+		rps := floatProp(n.Props, "rps", 100)
+		s := nodes.NewSource(n.ID, rps)
+		sim.AddNode(s)
+		return s
+	case "service":
+		cap := intProp(n.Props, "capacity", 50)
+		ql := intProp(n.Props, "queueLimit", 500)
+		mean := floatProp(n.Props, "meanNs", 2_000_000)
+		std := floatProp(n.Props, "stdNs", 1_000_000)
+		sim.AddNode(nodes.NewService(n.ID, cap, ql, mean, std))
+	case "loadbalancer":
+		strat := nodes.LBRoundRobin
+		switch n.Props["strategy"] {
+		case "leastInFlight":
+			strat = nodes.LBLeastInFlight
+		case "random":
+			strat = nodes.LBRandom
+		}
+		sim.AddNode(nodes.NewLoadBalancer(n.ID, strat))
+	case "cache":
+		hr := floatProp(n.Props, "hitRate", 0.8)
+		sim.AddNode(nodes.NewCache(n.ID, hr))
+	case "database":
+		sim.AddNode(nodes.NewDatabase(n.ID))
+	case "queue":
+		drain := floatProp(n.Props, "drainRPS", 100)
+		max := intProp(n.Props, "max", 10000)
+		q := nodes.NewQueue(n.ID, drain, max)
+		sim.AddNode(q)
+		return q
+	}
+	return nil
 }
 
 type Bootstrapper interface {

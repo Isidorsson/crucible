@@ -23,6 +23,9 @@ declare global {
     setRPS(nodeId: string, rps: number): boolean;
     injectFault(nodeId: string, kind: number, on: boolean): boolean;
     reset(): boolean;
+    // Returns true on success, or a JSON error string on failure.
+    addNode(nodeDefJson: string): boolean | string;
+    addEdge(src: string, dst: string): boolean | string;
   }
 
   // Set by Go main() on globalThis. Available in both window and worker scope

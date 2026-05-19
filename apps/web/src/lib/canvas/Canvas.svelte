@@ -19,7 +19,6 @@
   import ConnectPopover from './ConnectPopover.svelte';
   import { design } from '$lib/stores/design.svelte';
   import type { NodeKind } from '$lib/types/topology';
-  import { nanoid } from 'nanoid';
 
   const nodeTypes: NodeTypes = { crucible: CrucibleNode as never };
   const edgeTypes: EdgeTypes = { flow: FlowEdge as never };
@@ -81,23 +80,9 @@
     design.addNode(kind, { x: pos.x - 90, y: pos.y - 30 });
   }
 
-  function addEdge(source: string, target: string) {
-    if (source === target) return;
-    if (design.edges.some((e) => e.source === source && e.target === target)) return;
-    design.edges = [
-      ...design.edges,
-      {
-        id: `${source}->${target}-${nanoid(4)}`,
-        source,
-        target,
-        type: 'flow'
-      }
-    ];
-  }
-
   function onConnect(conn: Connection) {
     if (!conn.source || !conn.target) return;
-    addEdge(conn.source, conn.target);
+    design.addEdge(conn.source, conn.target);
   }
 
   // Reject self-loops and duplicate edges. In Loose mode the user can grab
@@ -151,9 +136,9 @@
     // Loose mode every cover-handle is type=source, but a user still
     // intuitively expects the drag direction to set edge direction.
     if (drop.fromHandleType === 'source') {
-      addEdge(drop.fromId, newId);
+      design.addEdge(drop.fromId, newId);
     } else {
-      addEdge(newId, drop.fromId);
+      design.addEdge(newId, drop.fromId);
     }
     drop = null;
   }

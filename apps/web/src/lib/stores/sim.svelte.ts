@@ -1,5 +1,11 @@
-import type { SimSnapshot, NodeMetrics, FaultKind, EdgeFlow } from '$lib/types/topology';
-import { design } from './design.svelte';
+import type {
+  SimSnapshot,
+  NodeMetrics,
+  FaultKind,
+  EdgeFlow,
+  NodeDef
+} from '$lib/types/topology';
+import { design, setMutationListener } from './design.svelte';
 
 export type SimState = 'idle' | 'loading' | 'running' | 'paused';
 
@@ -127,6 +133,9 @@ function createSimStore() {
         state = 'idle';
       } else if (m.type === 'ready') {
         state = 'running';
+        // Drain any graph mutations the user fired during the boot window
+        // so the engine ends up consistent with the on-screen design.
+        flushPending();
       }
     };
     return worker;
@@ -163,6 +172,7 @@ function createSimStore() {
     nodeHistory = {};
     edgeHistory = {};
     lastSnapshotWallMs = 0;
+    pendingMutations.length = 0;
     for (const t of faultTimers.values()) clearTimeout(t);
     faultTimers.clear();
     activeFaultByNode = {};
@@ -175,6 +185,50 @@ function createSimStore() {
 
   function setRPS(nodeId: string, rps: number) {
     worker?.postMessage({ type: 'setRPS', nodeId, rps });
+  }
+
+  // Hot-mutate the live sim. While the WASM module is booting (state ==
+  // 'loading') we queue mutations and flush them on 'ready' so the user
+  // can drop nodes during the ~250ms boot window without losing them.
+  // Outside of loading/running/paused, mutations are dropped — the next
+  // start() will pick up design.toSpec() in full anyway.
+  type PendingMutation =
+    | { type: 'addNode'; node: NodeDef }
+    | { type: 'addEdge'; src: string; dst: string };
+  const pendingMutations: PendingMutation[] = [];
+
+  function flushPending() {
+    if (pendingMutations.length === 0) return;
+    for (const m of pendingMutations) {
+      if (m.type === 'addNode') worker?.postMessage(m);
+      else worker?.postMessage(m);
+    }
+    pendingMutations.length = 0;
+  }
+
+  function isLive(): boolean {
+    return state === 'running' || state === 'paused';
+  }
+
+  function addNode(node: NodeDef) {
+    // Strip Svelte $state proxies before crossing the worker boundary;
+    // postMessage can't structured-clone the Proxy traps.
+    const plain = JSON.parse(JSON.stringify(node)) as NodeDef;
+    if (state === 'loading') {
+      pendingMutations.push({ type: 'addNode', node: plain });
+      return;
+    }
+    if (!isLive()) return;
+    worker?.postMessage({ type: 'addNode', node: plain });
+  }
+
+  function addEdge(src: string, dst: string) {
+    if (state === 'loading') {
+      pendingMutations.push({ type: 'addEdge', src, dst });
+      return;
+    }
+    if (!isLive()) return;
+    worker?.postMessage({ type: 'addEdge', src, dst });
   }
 
   function injectFault(nodeId: string, kind: FaultKind, on: boolean) {
@@ -254,6 +308,8 @@ function createSimStore() {
     stop,
     setSpeed,
     setRPS,
+    addNode,
+    addEdge,
     injectFault,
     injectFaultFor,
     setFault,
@@ -262,3 +318,11 @@ function createSimStore() {
 }
 
 export const sim = createSimStore();
+
+// Forward every design-side graph mutation to the engine. The sim store's
+// addNode/addEdge are guarded by state, so calls before start() / after
+// stop() are silently dropped — no need to gate at the call site.
+setMutationListener({
+  onAddNode: (node) => sim.addNode(node),
+  onAddEdge: (src, dst) => sim.addEdge(src, dst)
+});

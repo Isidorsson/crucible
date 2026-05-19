@@ -32,6 +32,8 @@ func main() {
 		"setRPS":      js.FuncOf(jsSetRPS),
 		"injectFault": js.FuncOf(jsInjectFault),
 		"reset":       js.FuncOf(jsReset),
+		"addNode":     js.FuncOf(jsAddNode),
+		"addEdge":     js.FuncOf(jsAddEdge),
 	}))
 	select {} // keep WASM alive
 }
@@ -137,6 +139,65 @@ func jsInjectFault(this js.Value, args []js.Value) any {
 func jsReset(this js.Value, args []js.Value) any {
 	sim = nil
 	boots = nil
+	return js.ValueOf(true)
+}
+
+// jsAddNode inserts a node into a running sim. Bootstraps the node if it
+// needs a kickoff event (source, queue) so traffic starts flowing on the
+// next Step() — the user sees the new component take its share of load
+// without having to stop+restart the sim.
+//
+// args[0]: NodeDef JSON
+func jsAddNode(this js.Value, args []js.Value) any {
+	if sim == nil {
+		return errVal("no sim")
+	}
+	if len(args) < 1 {
+		return errVal("missing node json")
+	}
+	var def topology.NodeDef
+	if err := json.Unmarshal([]byte(args[0].String()), &def); err != nil {
+		return errVal(err.Error())
+	}
+	if _, exists := sim.Nodes[def.ID]; exists {
+		// Idempotent: a stale UI-side replay shouldn't double-bootstrap.
+		return js.ValueOf(true)
+	}
+	if b := topology.AddNodeFromDef(sim, def); b != nil {
+		b.Bootstrap(sim)
+		boots = append(boots, b)
+	}
+	return js.ValueOf(true)
+}
+
+// jsAddEdge wires up a (src, dst) edge on a running sim. Existing in-flight
+// requests already routed elsewhere are unaffected; new requests arriving
+// at src after this call may be routed via the new edge depending on the
+// node's routing strategy (round-robin LBs pick it up immediately).
+//
+// args[0]: src id, args[1]: dst id
+func jsAddEdge(this js.Value, args []js.Value) any {
+	if sim == nil {
+		return errVal("no sim")
+	}
+	if len(args) < 2 {
+		return errVal("missing src/dst")
+	}
+	src := args[0].String()
+	dst := args[1].String()
+	if _, ok := sim.Nodes[src]; !ok {
+		return errVal("unknown src node")
+	}
+	if _, ok := sim.Nodes[dst]; !ok {
+		return errVal("unknown dst node")
+	}
+	// Idempotent: don't double-connect if the edge already exists.
+	for _, d := range sim.Downstream(src) {
+		if d == dst {
+			return js.ValueOf(true)
+		}
+	}
+	sim.Connect(src, dst)
 	return js.ValueOf(true)
 }
 

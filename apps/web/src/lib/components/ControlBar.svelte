@@ -297,6 +297,19 @@
     {#if sim.state === 'loading'}
       <span class="text-muted">loading sim…</span>
     {/if}
+    {#if sim.error}
+      <!-- Assertive so screen readers interrupt; visually a small red pill
+           so a hot-mutation failure (e.g. addEdge for an unknown node) is
+           obvious without being modal. -->
+      <span
+        role="alert"
+        aria-live="assertive"
+        class="rounded border border-err bg-err/10 px-2 py-0.5 text-[11px] font-semibold text-err"
+        title={sim.error}
+      >
+        sim error: {sim.error}
+      </span>
+    {/if}
     {#if sim.snapshot}
       <div class="flex gap-3 text-muted">
         <span>
