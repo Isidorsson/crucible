@@ -5,6 +5,7 @@
   import Canvas from '$lib/canvas/Canvas.svelte';
   import { design } from '$lib/stores/design.svelte';
   import { Flame } from '@lucide/svelte';
+  import { SvelteFlowProvider } from '@xyflow/svelte';
 
   let selectedId = $state<string | null>(null);
   const selected = $derived(
@@ -27,9 +28,11 @@
 
   <ControlBar />
 
-  <main class="flex flex-1 overflow-hidden" aria-label="Editor">
-    <Palette />
-    <Canvas onSelect={(id) => (selectedId = id)} />
-    <Inspector {selected} />
-  </main>
+  <SvelteFlowProvider>
+    <main class="flex flex-1 overflow-hidden" aria-label="Editor">
+      <Palette />
+      <Canvas onSelect={(id) => (selectedId = id)} />
+      <Inspector {selected} />
+    </main>
+  </SvelteFlowProvider>
 </div>

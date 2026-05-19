@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     SvelteFlow,
+    useSvelteFlow,
     Background,
     Controls,
     MiniMap,
@@ -20,6 +21,8 @@
   const edgeTypes: EdgeTypes = { flow: FlowEdge as never };
 
   let { onSelect }: { onSelect: (id: string | null) => void } = $props();
+
+  const { screenToFlowPosition } = useSvelteFlow();
 
   // Context menu position + target. Null = closed.
   let ctx = $state<{ x: number; y: number; target: CtxTarget } | null>(null);
@@ -45,11 +48,10 @@
     e.preventDefault();
     const kind = e.dataTransfer?.getData('application/crucible-kind') as NodeKind | '';
     if (!kind) return;
-    const bounds = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    design.addNode(kind, {
-      x: e.clientX - bounds.left - 90,
-      y: e.clientY - bounds.top - 30
-    });
+    // Convert cursor screen coords → flow coords so pan/zoom is respected,
+    // then offset by half the node footprint (~180×60) to center on cursor.
+    const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    design.addNode(kind, { x: pos.x - 90, y: pos.y - 30 });
   }
 
   function onConnect(conn: Connection) {
