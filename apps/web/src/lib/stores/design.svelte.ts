@@ -78,7 +78,7 @@ function createDesignStore() {
       seed,
       nodes: nodes.map((n) => ({
         id: n.id,
-        kind: n.data.kind,
+        kind: CATALOG_BY_KIND[n.data.kind].engineKind,
         props: n.data.props
       })),
       edges: edges.map((e) => ({ src: e.source, dst: e.target }))

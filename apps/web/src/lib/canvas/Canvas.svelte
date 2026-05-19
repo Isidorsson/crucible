@@ -2,6 +2,7 @@
   import {
     SvelteFlow,
     useSvelteFlow,
+    ConnectionMode,
     Background,
     Controls,
     MiniMap,
@@ -84,6 +85,8 @@
     defaultEdgeOptions={{ type: 'flow' }}
     deleteKey={['Delete', 'Backspace']}
     multiSelectionKey={['Shift', 'Meta', 'Control']}
+    connectionRadius={40}
+    connectionMode={ConnectionMode.Loose}
     onconnect={onConnect}
     onnodeclick={({ node }) => onSelect(node.id)}
     onpaneclick={() => {

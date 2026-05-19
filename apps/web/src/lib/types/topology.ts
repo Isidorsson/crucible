@@ -1,10 +1,55 @@
+// Visual kinds shown to user. Many map to the same engine kind — the
+// simulator only knows the engine kinds (source/service/loadbalancer/
+// cache/database/queue). Catalog entries declare both.
+export type EngineKind = 'source' | 'service' | 'loadbalancer' | 'cache' | 'database' | 'queue';
+
 export type NodeKind =
+  // sources
   | 'source'
-  | 'service'
+  | 'webClient'
+  | 'mobileClient'
+  | 'cronJob'
+  // edge / networking
+  | 'cdn'
+  | 'apiGateway'
   | 'loadbalancer'
+  | 'reverseProxy'
+  | 'waf'
+  | 'dns'
+  // compute
+  | 'service'
+  | 'webServer'
+  | 'appServer'
+  | 'microservice'
+  | 'function'
+  | 'worker'
+  // caching
   | 'cache'
+  | 'redis'
+  | 'memcached'
+  // data
   | 'database'
-  | 'queue';
+  | 'postgres'
+  | 'mysql'
+  | 'mongo'
+  | 'dynamodb'
+  | 'cassandra'
+  | 'elasticsearch'
+  | 'blobStore'
+  // messaging
+  | 'queue'
+  | 'kafka'
+  | 'rabbitmq'
+  | 'sqs'
+  | 'eventBus';
+
+export type NodeCategory =
+  | 'sources'
+  | 'edge'
+  | 'compute'
+  | 'caching'
+  | 'data'
+  | 'messaging';
 
 export type LBStrategy = 'roundRobin' | 'leastInFlight' | 'random';
 
@@ -28,7 +73,7 @@ export interface NodeProps {
 
 export interface NodeDef {
   id: string;
-  kind: NodeKind;
+  kind: EngineKind;
   props: NodeProps;
 }
 

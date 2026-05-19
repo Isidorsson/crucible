@@ -43,7 +43,12 @@
          {metrics?.faulted ? 'border-err' : 'border-line'}"
   style="min-width: 180px;"
 >
-  <Handle type="target" position={Position.Left} class="!bg-accent" />
+  <Handle
+    type="target"
+    position={Position.Left}
+    class="crucible-handle crucible-handle--target"
+    aria-label="Input port"
+  />
 
   <div class="mb-1.5 flex items-center gap-2 border-b border-line pb-1.5">
     <entry.icon class="h-4 w-4 text-accent" aria-hidden="true" />
@@ -86,5 +91,41 @@
     {/if}
   </div>
 
-  <Handle type="source" position={Position.Right} class="!bg-accent" />
+  <Handle
+    type="source"
+    position={Position.Right}
+    class="crucible-handle crucible-handle--source"
+    aria-label="Output port"
+  />
 </div>
+
+<style>
+  :global(.svelte-flow .crucible-handle) {
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background: var(--crucible-accent, #58a6ff);
+    border: 2px solid var(--crucible-panel, #0d1117);
+    transition: transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  }
+  :global(.svelte-flow .crucible-handle:hover),
+  :global(.svelte-flow .crucible-handle.connectingfrom),
+  :global(.svelte-flow .crucible-handle.connectionindicator) {
+    transform: scale(1.35);
+    box-shadow: 0 0 0 4px rgba(88, 166, 255, 0.18);
+  }
+  :global(.svelte-flow .crucible-handle--source) {
+    right: -8px;
+  }
+  :global(.svelte-flow .crucible-handle--target) {
+    left: -8px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.svelte-flow .crucible-handle) {
+      transition: none;
+    }
+    :global(.svelte-flow .crucible-handle:hover) {
+      transform: none;
+    }
+  }
+</style>
