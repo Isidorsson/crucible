@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    height: 100%;
+  }
+}
+
+/* Svelte Flow style overrides to match dark theme */
+:root {
+  --xy-background-color: #0b0d10;
+  --xy-node-background-color: #13171c;
+  --xy-node-border: 1px solid #1f262f;
+  --xy-node-color: #e6edf3;
+  --xy-edge-stroke: #7d8590;
+  --xy-edge-stroke-selected: #58a6ff;
+  --xy-handle-background-color: #58a6ff;
+  --xy-handle-border-color: #0b0d10;
+}

@@ -1,0 +1,55 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build / framework
+.svelte-kit/
+build/
+dist/
+.vercel/
+.netlify/
+.vite/
+
+# bundled artifacts (rebuilt by `make sim` + toolchain copy)
+apps/web/static/sim.wasm
+apps/web/static/wasm_exec.js
+
+# go
+*.test
+*.out
+coverage.out
+vendor/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+bun-debug.log*
+
+# cache
+.cache/
+.turbo/
+.eslintcache
+.parcel-cache/
+
+# misc
+*.tsbuildinfo
+.tmp/
+tmp/
