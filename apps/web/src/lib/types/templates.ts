@@ -39,8 +39,8 @@ export interface Template {
 
 // Grid step matches the on-canvas node footprint (~180×60) plus breathing
 // room. Tuned to keep edges readable after `fitView`.
-const COL = 220;
-const ROW = 110;
+const COL = 320;
+const ROW = 170;
 
 export const TEMPLATES: Template[] = [
   {
