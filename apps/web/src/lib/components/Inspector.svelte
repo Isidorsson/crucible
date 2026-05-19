@@ -12,6 +12,9 @@
     type FaultKind
   } from '$lib/types/topology';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
+  import Hint from './Hint.svelte';
+  import Tooltip from './Tooltip.svelte';
+  import { GLOSSARY } from './glossary';
 
   let { selected }: { selected: Node<CrucibleNodeData> | null } = $props();
   const entry = $derived(selected ? CATALOG_BY_KIND[selected.data.kind] : null);
@@ -52,14 +55,40 @@
     <div class="space-y-4 p-3 text-xs">
       <div class="flex items-center gap-2">
         <entry.icon class="h-4 w-4 text-accent" aria-hidden="true" />
-        <span class="font-mono text-ink">{entry.label}</span>
-        <span class="ml-auto font-mono text-muted" translate="no">{selected.id}</span>
+        <Tooltip content={entry.description} side="bottom">
+          {#snippet children(id)}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <span
+              tabindex="0"
+              aria-describedby={id}
+              class="cursor-help font-mono text-ink focus-visible:outline-none
+                     focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {entry.label}
+            </span>
+          {/snippet}
+        </Tooltip>
+        <Tooltip content="Internal node id. Used by edges to reference this node; stable across renders." side="left">
+          {#snippet children(id)}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <span
+              tabindex="0"
+              aria-describedby={id}
+              translate="no"
+              class="ml-auto cursor-help font-mono text-muted focus-visible:outline-none
+                     focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {selected.id}
+            </span>
+          {/snippet}
+        </Tooltip>
       </div>
 
       <div class="space-y-2">
         {#if selected.data.kind === 'source'}
-          <label class="block">
-            <span class="text-muted">rps</span>
+          <div class="block">
+            <Hint term="rps" />
+            <label class="sr-only" for="prop-rps-{selected.id}">requests per second</label>
             <input
               id="prop-rps-{selected.id}"
               name="rps"
@@ -74,11 +103,12 @@
               class="mt-1 w-full rounded border border-line bg-bg px-2 py-1 font-mono
                      focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
             />
-          </label>
+          </div>
         {/if}
         {#if selected.data.kind === 'service' || selected.data.kind === 'database'}
-          <label class="block">
-            <span class="text-muted">capacity</span>
+          <div class="block">
+            <Hint term="capacity" />
+            <label class="sr-only" for="prop-capacity-{selected.id}">capacity</label>
             <input
               id="prop-capacity-{selected.id}"
               name="capacity"
@@ -92,9 +122,10 @@
               class="mt-1 w-full rounded border border-line bg-bg px-2 py-1 font-mono
                      focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
             />
-          </label>
-          <label class="block">
-            <span class="text-muted">queue limit</span>
+          </div>
+          <div class="block">
+            <Hint term="queueLimit" />
+            <label class="sr-only" for="prop-queue-{selected.id}">queue limit</label>
             <input
               id="prop-queue-{selected.id}"
               name="queueLimit"
@@ -108,11 +139,12 @@
               class="mt-1 w-full rounded border border-line bg-bg px-2 py-1 font-mono
                      focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
             />
-          </label>
+          </div>
         {/if}
         {#if selected.data.kind === 'cache'}
-          <label class="block">
-            <span class="text-muted">hit rate</span>
+          <div class="block">
+            <Hint term="hitRate" />
+            <label class="sr-only" for="prop-hit-{selected.id}">hit rate</label>
             <input
               id="prop-hit-{selected.id}"
               name="hitRate"
@@ -128,47 +160,56 @@
               class="mt-1 w-full rounded border border-line bg-bg px-2 py-1 font-mono
                      focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
             />
-          </label>
+          </div>
         {/if}
       </div>
 
       <section aria-labelledby="chaos-heading">
         <h3 id="chaos-heading" class="mb-1 text-muted">Chaos</h3>
         <div class="grid grid-cols-3 gap-1">
-          <button
-            type="button"
-            aria-pressed={metrics?.faulted ?? false}
-            aria-describedby="chaos-kill-desc"
-            onclick={() => setFault(FaultKill)}
-            class="{faultButtonClasses} hover:border-err"
-          >
-            <Skull class="h-4 w-4 text-err" aria-hidden="true" />
-            <span>kill</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={metrics?.faulted ?? false}
-            aria-describedby="chaos-slow-desc"
-            onclick={() => setFault(FaultSlow)}
-            class="{faultButtonClasses} hover:border-warn"
-          >
-            <Snail class="h-4 w-4 text-warn" aria-hidden="true" />
-            <span>slow</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={metrics?.faulted ?? false}
-            aria-describedby="chaos-loss-desc"
-            onclick={() => setFault(FaultPacketLoss)}
-            class="{faultButtonClasses} hover:border-warn"
-          >
-            <ShieldOff class="h-4 w-4 text-warn" aria-hidden="true" />
-            <span>loss</span>
-          </button>
+          <Tooltip content={GLOSSARY.faultKill.full} side="top">
+            {#snippet children(id)}
+              <button
+                type="button"
+                aria-pressed={metrics?.faulted ?? false}
+                aria-describedby={id}
+                onclick={() => setFault(FaultKill)}
+                class="{faultButtonClasses} hover:border-err"
+              >
+                <Skull class="h-4 w-4 text-err" aria-hidden="true" />
+                <span>kill</span>
+              </button>
+            {/snippet}
+          </Tooltip>
+          <Tooltip content={GLOSSARY.faultSlow.full} side="top">
+            {#snippet children(id)}
+              <button
+                type="button"
+                aria-pressed={metrics?.faulted ?? false}
+                aria-describedby={id}
+                onclick={() => setFault(FaultSlow)}
+                class="{faultButtonClasses} hover:border-warn"
+              >
+                <Snail class="h-4 w-4 text-warn" aria-hidden="true" />
+                <span>slow</span>
+              </button>
+            {/snippet}
+          </Tooltip>
+          <Tooltip content={GLOSSARY.faultLoss.full} side="top">
+            {#snippet children(id)}
+              <button
+                type="button"
+                aria-pressed={metrics?.faulted ?? false}
+                aria-describedby={id}
+                onclick={() => setFault(FaultPacketLoss)}
+                class="{faultButtonClasses} hover:border-warn"
+              >
+                <ShieldOff class="h-4 w-4 text-warn" aria-hidden="true" />
+                <span>loss</span>
+              </button>
+            {/snippet}
+          </Tooltip>
         </div>
-        <p id="chaos-kill-desc" class="sr-only">Crash the node — drops all requests.</p>
-        <p id="chaos-slow-desc" class="sr-only">Multiplies service time by ten.</p>
-        <p id="chaos-loss-desc" class="sr-only">Randomly drops half of incoming requests.</p>
 
         <div class="mt-2" aria-live="polite">
           {#if metrics?.faulted}

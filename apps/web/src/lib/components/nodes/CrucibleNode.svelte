@@ -4,6 +4,8 @@
   import type { CrucibleNodeData } from '$lib/stores/design.svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { AlertTriangle } from '@lucide/svelte';
+  import Hint from '../Hint.svelte';
+  import Tooltip from '../Tooltip.svelte';
 
   let { id, data, selected }: NodeProps<Node<CrucibleNodeData>> = $props();
   const entry = $derived(CATALOG_BY_KIND[data.kind]);
@@ -68,37 +70,62 @@
 
   <div class="mb-1.5 flex items-center gap-2 border-b border-line pb-1.5">
     <entry.icon class="h-4 w-4 text-accent" aria-hidden="true" />
-    <span class="font-semibold tracking-wide text-ink">{entry.label}</span>
+    <Tooltip content={entry.description} side="top">
+      {#snippet children(id)}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <span
+          tabindex="0"
+          aria-describedby={id}
+          class="cursor-help font-semibold tracking-wide text-ink
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {entry.label}
+        </span>
+      {/snippet}
+    </Tooltip>
     {#if metrics?.faulted}
-      <AlertTriangle class="ml-auto h-3.5 w-3.5 text-err" aria-hidden="true" />
+      <Tooltip content="A fault is active on this node — chaos engineering in action. Open the Inspector to clear." side="left">
+        {#snippet children(id)}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <span
+            tabindex="0"
+            aria-describedby={id}
+            class="ml-auto inline-flex cursor-help focus-visible:outline-none
+                   focus-visible:ring-2 focus-visible:ring-err"
+            aria-label="Node is faulted"
+          >
+            <AlertTriangle class="h-3.5 w-3.5 text-err" aria-hidden="true" />
+          </span>
+        {/snippet}
+      </Tooltip>
     {/if}
   </div>
 
   <div class="space-y-0.5 text-muted">
     {#if metrics}
       <div class="flex justify-between">
-        <span>rps</span>
+        <Hint term="rps" />
         <span class="text-ink tabular-nums">{fmtRate(metrics.throughput)}</span>
       </div>
       <div class="flex justify-between">
-        <span>p50 / p99</span>
+        <Hint term="p50p99" />
         <span class="text-ink tabular-nums">
           {fmtLatency(metrics.p50)} / {fmtLatency(metrics.p99)}
         </span>
       </div>
       <div class="flex justify-between">
-        <span>in-flight</span>
+        <Hint term="inFlight" />
         <span class="text-ink tabular-nums">{metrics.inFlight}</span>
       </div>
       {#if metrics.queueDepth > 0}
         <div class="flex justify-between">
-          <span>queue</span>
+          <Hint term="queue" />
           <span class="text-warn tabular-nums">{metrics.queueDepth}</span>
         </div>
       {/if}
       {#if metrics.errorRate > 0}
         <div class="flex justify-between">
-          <span>err rate</span>
+          <Hint term="errRate" />
           <span class="text-err tabular-nums">{(metrics.errorRate * 100).toFixed(1)}%</span>
         </div>
       {/if}

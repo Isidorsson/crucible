@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/svelte';
 import type { NodeKind, NodeProps, TopologySpec } from '$lib/types/topology';
 import { CATALOG_BY_KIND } from '$lib/types/catalog';
+import { TEMPLATE_BY_ID } from '$lib/types/templates';
 import { nanoid } from 'nanoid';
 
 export interface CrucibleNodeData extends Record<string, unknown> {
@@ -67,6 +68,47 @@ function createDesignStore() {
     return copy.id;
   }
 
+  // Insert a whole template subgraph at `anchor` (flow coords).
+  // Template node positions are relative; here we materialize them with
+  // fresh ids and wire the edges by remapping template indices → new ids.
+  // Returns the new node ids so the caller can fitView/select if needed.
+  function applyTemplate(templateId: string, anchor: { x: number; y: number }): string[] {
+    const tpl = TEMPLATE_BY_ID[templateId];
+    if (!tpl) return [];
+
+    const newIds: string[] = [];
+    const newNodes: Node<CrucibleNodeData>[] = tpl.nodes.map((tn) => {
+      const id = nanoid(8);
+      newIds.push(id);
+      const entry = CATALOG_BY_KIND[tn.kind];
+      return {
+        id,
+        type: 'crucible',
+        position: { x: anchor.x + tn.dx, y: anchor.y + tn.dy },
+        data: {
+          kind: tn.kind,
+          label: entry.label,
+          props: { ...entry.defaults, ...(tn.propsOverride ?? {}) }
+        }
+      };
+    });
+
+    const newEdges: Edge[] = tpl.edges.map((te) => {
+      const source = newIds[te.from];
+      const target = newIds[te.to];
+      return {
+        id: `${source}->${target}-${nanoid(4)}`,
+        source,
+        target,
+        type: 'flow'
+      };
+    });
+
+    nodes = [...nodes, ...newNodes];
+    edges = [...edges, ...newEdges];
+    return newIds;
+  }
+
   function updateNodeProps(id: string, patch: Partial<NodeProps>) {
     nodes = nodes.map((n) =>
       n.id === id ? { ...n, data: { ...n.data, props: { ...n.data.props, ...patch } } } : n
@@ -105,6 +147,7 @@ function createDesignStore() {
       seed = v;
     },
     addNode,
+    applyTemplate,
     removeNode,
     removeNodes,
     removeEdge,

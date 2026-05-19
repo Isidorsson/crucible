@@ -49,11 +49,19 @@
 
   function onDrop(e: DragEvent) {
     e.preventDefault();
+    // Convert cursor screen coords → flow coords so pan/zoom is respected.
+    const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+    const tplId = e.dataTransfer?.getData('application/crucible-template');
+    if (tplId) {
+      // Drop anchor = top-left of first template node; center on cursor.
+      design.applyTemplate(tplId, { x: pos.x - 90, y: pos.y - 30 });
+      return;
+    }
+
     const kind = e.dataTransfer?.getData('application/crucible-kind') as NodeKind | '';
     if (!kind) return;
-    // Convert cursor screen coords → flow coords so pan/zoom is respected,
-    // then offset by half the node footprint (~180×60) to center on cursor.
-    const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    // Offset by half the node footprint (~180×60) to center on cursor.
     design.addNode(kind, { x: pos.x - 90, y: pos.y - 30 });
   }
 
