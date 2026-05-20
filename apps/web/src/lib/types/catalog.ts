@@ -66,6 +66,10 @@ export interface NodeCatalogEntry {
   realWorldRange?: string;
   /** How this component scales (horizontal, vertical, sharding, …). */
   scaling?: string;
+  /** Rough monthly cost at the default scale, in USD. Used by cost overlay. */
+  costPerMonth?: number;
+  /** What a reasonable p99 latency target looks like for this node, in ms. */
+  sloP99Ms?: number;
 }
 
 export interface CategoryMeta {
@@ -611,7 +615,14 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
 // Every field is optional — Inspector renders only what's present.
 type ExtraMeta = Pick<
   NodeCatalogEntry,
-  'acronym' | 'failureModes' | 'pairsWith' | 'whenNotToUse' | 'realWorldRange' | 'scaling'
+  | 'acronym'
+  | 'failureModes'
+  | 'pairsWith'
+  | 'whenNotToUse'
+  | 'realWorldRange'
+  | 'scaling'
+  | 'costPerMonth'
+  | 'sloP99Ms'
 >;
 
 const META: Partial<Record<NodeKind, ExtraMeta>> = {
@@ -1095,8 +1106,68 @@ const META: Partial<Record<NodeKind, ExtraMeta>> = {
   }
 };
 
+// Cost + SLO anchors. Kept separate from META so the prose-heavy edu fields
+// stay readable and the numeric anchors stay scan-able in one block.
+//   costPerMonth — order-of-magnitude $/mo at default scale (AWS list price).
+//   sloP99Ms     — typical p99 target for this kind on the request path;
+//                  omitted for async / background components where p99 isn't
+//                  the right metric.
+const COST_SLO: Partial<Record<NodeKind, { costPerMonth?: number; sloP99Ms?: number }>> = {
+  // sources — synthetic; cost belongs to whatever they hit
+  source: { costPerMonth: 0 },
+  webClient: { costPerMonth: 0 },
+  mobileClient: { costPerMonth: 0 },
+  cronJob: { costPerMonth: 0 },
+  // edge
+  cdn: { costPerMonth: 50, sloP99Ms: 100 },
+  apiGateway: { costPerMonth: 40, sloP99Ms: 50 },
+  loadbalancer: { costPerMonth: 20, sloP99Ms: 5 },
+  reverseProxy: { costPerMonth: 30, sloP99Ms: 10 },
+  waf: { costPerMonth: 50, sloP99Ms: 20 },
+  dns: { costPerMonth: 5, sloP99Ms: 50 },
+  rateLimiter: { costPerMonth: 20, sloP99Ms: 5 },
+  circuitBreaker: { costPerMonth: 0, sloP99Ms: 1 },
+  // compute
+  service: { costPerMonth: 60, sloP99Ms: 100 },
+  webServer: { costPerMonth: 60, sloP99Ms: 50 },
+  appServer: { costPerMonth: 100, sloP99Ms: 200 },
+  microservice: { costPerMonth: 80, sloP99Ms: 100 },
+  function: { costPerMonth: 20, sloP99Ms: 1000 },
+  worker: { costPerMonth: 80 },
+  authService: { costPerMonth: 80, sloP99Ms: 50 },
+  websocketServer: { costPerMonth: 120, sloP99Ms: 50 },
+  streamProcessor: { costPerMonth: 300 },
+  mlModelServer: { costPerMonth: 1500, sloP99Ms: 1000 },
+  // caching
+  cache: { costPerMonth: 80, sloP99Ms: 5 },
+  redis: { costPerMonth: 80, sloP99Ms: 5 },
+  memcached: { costPerMonth: 80, sloP99Ms: 5 },
+  // data
+  database: { costPerMonth: 200, sloP99Ms: 50 },
+  postgres: { costPerMonth: 250, sloP99Ms: 50 },
+  mysql: { costPerMonth: 250, sloP99Ms: 50 },
+  mongo: { costPerMonth: 300, sloP99Ms: 50 },
+  dynamodb: { costPerMonth: 100, sloP99Ms: 20 },
+  cassandra: { costPerMonth: 500, sloP99Ms: 30 },
+  elasticsearch: { costPerMonth: 400, sloP99Ms: 100 },
+  blobStore: { costPerMonth: 30, sloP99Ms: 200 },
+  readReplica: { costPerMonth: 200, sloP99Ms: 50 },
+  vectorDB: { costPerMonth: 400, sloP99Ms: 50 },
+  timeseriesDB: { costPerMonth: 250, sloP99Ms: 30 },
+  dataWarehouse: { costPerMonth: 800 },
+  // messaging — async; p99 lives at the consumer
+  queue: { costPerMonth: 50 },
+  kafka: { costPerMonth: 400 },
+  rabbitmq: { costPerMonth: 80, sloP99Ms: 20 },
+  sqs: { costPerMonth: 20 },
+  eventBus: { costPerMonth: 30 }
+};
+
 export const CATALOG_BY_KIND: Record<NodeKind, NodeCatalogEntry> = Object.fromEntries(
-  NODE_CATALOG.map((e) => [e.kind, { ...e, ...(META[e.kind] ?? {}) }])
+  NODE_CATALOG.map((e) => [
+    e.kind,
+    { ...e, ...(META[e.kind] ?? {}), ...(COST_SLO[e.kind] ?? {}) }
+  ])
 ) as Record<NodeKind, NodeCatalogEntry>;
 
 export const CATALOG_BY_CATEGORY: Record<NodeCategory, NodeCatalogEntry[]> = (() => {
