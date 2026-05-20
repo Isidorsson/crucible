@@ -14,6 +14,7 @@
     type NodeProps
   } from '$lib/types/topology';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
+  import { ANTI_PATTERNS_BY_KIND } from '$lib/types/antipatterns';
   import type { NodeKind } from '$lib/types/topology';
   import Hint from './Hint.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -31,6 +32,7 @@
 
   const entry = $derived(selected ? CATALOG_BY_KIND[selected.data.kind] : null);
   const engineKind = $derived(entry?.engineKind);
+  const antiPatterns = $derived(selected ? ANTI_PATTERNS_BY_KIND[selected.data.kind] ?? [] : []);
   const metrics = $derived(selected ? sim.metricsByNode[selected.id] : undefined);
   const activeFault = $derived<FaultKind>(
     selected ? (sim.activeFaultByNode[selected.id] ?? FaultNone) : FaultNone
@@ -292,7 +294,7 @@
       {/if}
 
       <!-- ── about: educational metadata (collapsible) ────────────────── -->
-      {#if entry.realWorldRange || entry.scaling || entry.failureModes?.length || entry.whenNotToUse || entry.pairsWith?.length}
+      {#if entry.realWorldRange || entry.scaling || entry.failureModes?.length || entry.whenNotToUse || entry.pairsWith?.length || antiPatterns.length}
         <details class="group rounded border border-line bg-bg">
           <summary
             class="flex cursor-pointer list-none items-center gap-1.5 rounded px-2 py-1.5 text-muted
@@ -351,6 +353,47 @@
                   When not to use
                 </h4>
                 <p class="mt-0.5 text-ink">{entry.whenNotToUse}</p>
+              </div>
+            {/if}
+
+            {#if antiPatterns.length}
+              <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Anti-patterns
+                </h4>
+                <ul class="mt-1 space-y-1.5" role="list">
+                  {#each antiPatterns as ap (ap.id)}
+                    <li>
+                      <Tooltip
+                        content={`${ap.cause}\n\nSymptom: ${ap.symptom}\n\nFix: ${ap.fix}`}
+                        side="left"
+                      >
+                        {#snippet children(id)}
+                          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                          <details
+                            class="rounded border border-line bg-panel"
+                            aria-describedby={id}
+                          >
+                            <summary
+                              class="flex cursor-pointer list-none items-center gap-1.5 px-1.5 py-1 text-[11px]
+                                     text-warn hover:text-err
+                                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            >
+                              <span aria-hidden="true">⚠</span>
+                              <span class="font-mono">{ap.label}</span>
+                              <span class="ml-1 text-muted">— {ap.blurb}</span>
+                            </summary>
+                            <div class="space-y-1 border-t border-line p-1.5 text-[11px] leading-snug">
+                              <p><span class="text-muted">Cause:</span> {ap.cause}</p>
+                              <p><span class="text-muted">Symptom:</span> {ap.symptom}</p>
+                              <p><span class="text-muted">Fix:</span> {ap.fix}</p>
+                            </div>
+                          </details>
+                        {/snippet}
+                      </Tooltip>
+                    </li>
+                  {/each}
+                </ul>
               </div>
             {/if}
 
