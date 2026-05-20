@@ -206,7 +206,7 @@
 </script>
 
 <div
-  class="relative flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2 font-mono text-xs text-ink"
+  class="relative flex flex-nowrap items-center gap-3 overflow-x-auto border-b border-line bg-panel px-4 py-2 font-mono text-xs text-ink"
   role="toolbar"
   aria-label="Simulation controls"
 >
@@ -217,7 +217,7 @@
         onclick={onPlayPause}
         aria-label="{playLabel} simulation"
         aria-describedby={id}
-        class="flex items-center gap-1.5 rounded border border-line bg-bg px-3 py-1.5
+        class="flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded border border-line bg-bg px-3 py-1.5
                transition-colors hover:border-accent
                focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
       >
