@@ -9,11 +9,13 @@
     RotateCcw,
     DollarSign,
     Share2,
-    AlertTriangle
+    AlertTriangle,
+    StickyNote
   } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
   import { selection } from '$lib/stores/selection.svelte';
+  import type { NodeKind } from '$lib/types/topology';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
@@ -39,11 +41,12 @@
     }
     return worst;
   });
-  const worstNodeLabel = $derived(
-    worstNode
-      ? design.nodes.find((n) => n.id === worstNode!.id)?.data.label ?? worstNode.id
-      : null
-  );
+  const worstNodeLabel = $derived.by(() => {
+    if (!worstNode) return null;
+    const n = design.nodes.find((x) => x.id === worstNode.id);
+    if (!n || n.type !== 'crucible') return worstNode.id;
+    return (n.data as { label: string }).label;
+  });
   function fmtMs(ns: number): string {
     if (ns < 1_000_000) return `${(ns / 1_000).toFixed(0)}µs`;
     if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(0)}ms`;
@@ -102,8 +105,10 @@
     const rps = globalRps;
     untrack(() => {
       for (const n of design.nodes) {
-        if (CATALOG_BY_KIND[n.data.kind].engineKind !== 'source') continue;
-        if (n.data.props.rps === rps) continue; // no-op write would still re-render
+        if (n.type !== 'crucible') continue;
+        const data = n.data as { kind: NodeKind; props: { rps?: number } };
+        if (CATALOG_BY_KIND[data.kind].engineKind !== 'source') continue;
+        if (data.props.rps === rps) continue; // no-op write would still re-render
         design.updateNodeProps(n.id, { rps });
         sim.setRPS(n.id, rps);
       }
@@ -173,14 +178,16 @@
     else sim.start();
   }
 
-  // Sum monthly cost across every node on the canvas. Catalog values are
-  // order-of-magnitude AWS list prices at default scale; sum is best read
-  // as "what tier of monthly burn this design implies", not a quote.
+  // Sum monthly cost across every engine node on the canvas. Catalog values
+  // are order-of-magnitude AWS list prices at default scale; sum is best read
+  // as "what tier of monthly burn this design implies", not a quote. Note
+  // nodes (type === 'note') carry no cost.
   const totalCost = $derived(
-    design.nodes.reduce(
-      (sum, n) => sum + (CATALOG_BY_KIND[n.data.kind].costPerMonth ?? 0),
-      0
-    )
+    design.nodes.reduce((sum, n) => {
+      if (n.type !== 'crucible') return sum;
+      const data = n.data as { kind: NodeKind };
+      return sum + (CATALOG_BY_KIND[data.kind].costPerMonth ?? 0);
+    }, 0)
   );
   const totalCostFmt = $derived(
     totalCost >= 1000 ? `${(totalCost / 1000).toFixed(1)}k` : `${totalCost}`
@@ -343,6 +350,22 @@
       >
         <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />
         seed:&nbsp;<span class="tabular-nums">{design.seed}</span>
+      </button>
+    {/snippet}
+  </Tooltip>
+
+  <Tooltip content="Drop a sticky note at the canvas center to document this design." side="bottom">
+    {#snippet children(id)}
+      <button
+        type="button"
+        onclick={() => design.addNote({ x: 240, y: 160 })}
+        aria-label="Add sticky note"
+        aria-describedby={id}
+        class="flex items-center gap-1.5 rounded border border-line bg-bg px-2.5 py-1.5
+               transition-colors hover:border-warn
+               focus-visible:border-warn focus-visible:ring-2 focus-visible:ring-warn"
+      >
+        <StickyNote class="h-3.5 w-3.5" aria-hidden="true" /> note
       </button>
     {/snippet}
   </Tooltip>

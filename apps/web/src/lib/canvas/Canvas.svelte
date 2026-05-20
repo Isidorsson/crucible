@@ -14,13 +14,17 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import CrucibleNode from '$lib/components/nodes/CrucibleNode.svelte';
+  import NoteNode from '$lib/components/nodes/NoteNode.svelte';
   import FlowEdge from './FlowEdge.svelte';
   import ContextMenu, { type CtxTarget } from './ContextMenu.svelte';
   import ConnectPopover from './ConnectPopover.svelte';
   import { design } from '$lib/stores/design.svelte';
   import type { NodeKind } from '$lib/types/topology';
 
-  const nodeTypes: NodeTypes = { crucible: CrucibleNode as never };
+  const nodeTypes: NodeTypes = {
+    crucible: CrucibleNode as never,
+    note: NoteNode as never
+  };
   const edgeTypes: EdgeTypes = { flow: FlowEdge as never };
 
   let { onSelect }: { onSelect: (id: string | null) => void } = $props();

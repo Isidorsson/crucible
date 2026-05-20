@@ -3,14 +3,18 @@
   import ControlBar from '$lib/components/ControlBar.svelte';
   import Inspector from '$lib/components/Inspector.svelte';
   import Canvas from '$lib/canvas/Canvas.svelte';
-  import { design } from '$lib/stores/design.svelte';
+  import { design, type CrucibleNodeData } from '$lib/stores/design.svelte';
   import { selection } from '$lib/stores/selection.svelte';
   import { Flame } from '@lucide/svelte';
-  import { SvelteFlowProvider } from '@xyflow/svelte';
+  import { SvelteFlowProvider, type Node } from '@xyflow/svelte';
 
-  const selected = $derived(
-    selection.id ? design.nodes.find((n) => n.id === selection.id) ?? null : null
-  );
+  // Inspector only handles crucible nodes; note nodes are edited inline.
+  const selected = $derived.by(() => {
+    if (!selection.id) return null;
+    const n = design.nodes.find((x) => x.id === selection.id);
+    if (!n || n.type !== 'crucible') return null;
+    return n as Node<CrucibleNodeData>;
+  });
 </script>
 
 <svelte:head>

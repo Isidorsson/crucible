@@ -10,6 +10,22 @@ export interface CrucibleNodeData extends Record<string, unknown> {
   props: NodeProps;
 }
 
+// Sticky-note data. Lives on the same Svelte-Flow node array as crucible
+// nodes but uses `type: 'note'` so Canvas can pick a different renderer.
+// Notes have no engine counterpart — toSpec() skips them and the mutation
+// listener never sees them.
+export interface NoteData extends Record<string, unknown> {
+  text: string;
+}
+
+export type AnyNode =
+  | (Node<CrucibleNodeData> & { type: 'crucible' })
+  | (Node<NoteData> & { type: 'note' });
+
+export function isNote(n: Node): n is Node<NoteData> & { type: 'note' } {
+  return n.type === 'note';
+}
+
 // Mutation listener — the sim store registers itself here so graph
 // additions can be forwarded to the running engine without design.svelte
 // having to import sim.svelte (which would create a circular import: sim
@@ -25,7 +41,11 @@ export function setMutationListener(l: MutationListener) {
 
 // Svelte 5 runes-based store. One source of truth for the canvas.
 function createDesignStore() {
-  let nodes = $state<Node<CrucibleNodeData>[]>([]);
+  // Both crucible nodes and sticky-note nodes share the same array
+  // because SvelteFlow's bind:nodes wants a single source of truth.
+  // Consumers narrow via `isNote(n)` or `n.type === 'crucible'` before
+  // touching kind-specific fields.
+  let nodes = $state<Node[]>([]);
   let edges = $state<Edge[]>([]);
   let seed = $state<number>(1);
 
@@ -80,12 +100,25 @@ function createDesignStore() {
   function duplicateNode(id: string) {
     const src = nodes.find((n) => n.id === id);
     if (!src) return null;
+    if (src.type === 'note') {
+      const note = src as Node<NoteData>;
+      const copy: Node<NoteData> = {
+        ...note,
+        id: nanoid(8),
+        position: { x: src.position.x + 40, y: src.position.y + 40 },
+        data: { text: note.data.text },
+        selected: false
+      };
+      nodes = [...nodes, copy];
+      return copy.id;
+    }
+    const cn = src as Node<CrucibleNodeData>;
     const copy: Node<CrucibleNodeData> = {
-      ...src,
+      ...cn,
       id: nanoid(8),
       dragHandle: DRAG_HANDLE,
       position: { x: src.position.x + 40, y: src.position.y + 40 },
-      data: { ...src.data, props: { ...src.data.props } },
+      data: { ...cn.data, props: { ...cn.data.props } },
       selected: false
     };
     nodes = [...nodes, copy];
@@ -176,15 +209,41 @@ function createDesignStore() {
   }
 
   function updateNodeProps(id: string, patch: Partial<NodeProps>) {
+    nodes = nodes.map((n) => {
+      if (n.id !== id || n.type !== 'crucible') return n;
+      const cn = n as Node<CrucibleNodeData>;
+      return { ...cn, data: { ...cn.data, props: { ...cn.data.props, ...patch } } };
+    });
+  }
+
+  // ── notes ──────────────────────────────────────────────────────────────
+  function addNote(position: { x: number; y: number }, text = ''): string {
+    const id = nanoid(8);
+    const note: Node<NoteData> = {
+      id,
+      type: 'note',
+      position,
+      width: 200,
+      height: 100,
+      data: { text }
+    };
+    nodes = [...nodes, note];
+    return id;
+  }
+
+  function updateNoteText(id: string, text: string) {
     nodes = nodes.map((n) =>
-      n.id === id ? { ...n, data: { ...n.data, props: { ...n.data.props, ...patch } } } : n
+      n.id === id && n.type === 'note'
+        ? { ...n, data: { ...(n.data as NoteData), text } }
+        : n
     );
   }
 
   function toSpec(): TopologySpec {
+    const engineNodes = nodes.filter((n) => n.type === 'crucible') as Node<CrucibleNodeData>[];
     return {
       seed,
-      nodes: nodes.map((n) => ({
+      nodes: engineNodes.map((n) => ({
         id: n.id,
         kind: CATALOG_BY_KIND[n.data.kind].engineKind,
         props: n.data.props
@@ -207,24 +266,41 @@ function createDesignStore() {
     source: string;
     target: string;
   }
+  interface SerializedNote {
+    id: string;
+    position: { x: number; y: number };
+    width?: number;
+    height?: number;
+    text: string;
+  }
   interface SerializedDesign {
     version: 1;
     seed: number;
     nodes: SerializedNode[];
     edges: SerializedEdge[];
+    notes?: SerializedNote[];
   }
 
   function toJSON(): SerializedDesign {
+    const cn = nodes.filter((n) => n.type === 'crucible') as Node<CrucibleNodeData>[];
+    const nn = nodes.filter((n) => n.type === 'note') as Node<NoteData>[];
     return {
       version: 1,
       seed,
-      nodes: nodes.map((n) => ({
+      nodes: cn.map((n) => ({
         id: n.id,
         kind: n.data.kind,
         position: { ...n.position },
         props: { ...n.data.props }
       })),
-      edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))
+      edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+      notes: nn.map((n) => ({
+        id: n.id,
+        position: { ...n.position },
+        width: typeof n.width === 'number' ? n.width : undefined,
+        height: typeof n.height === 'number' ? n.height : undefined,
+        text: n.data.text
+      }))
     };
   }
 
@@ -262,7 +338,15 @@ function createDesignStore() {
       target: e.target,
       type: 'flow'
     }));
-    nodes = nextNodes;
+    const nextNotes: Node<NoteData>[] = (d.notes ?? []).map((nt) => ({
+      id: nt.id,
+      type: 'note',
+      position: { ...nt.position },
+      width: nt.width,
+      height: nt.height,
+      data: { text: nt.text ?? '' }
+    }));
+    nodes = [...nextNodes, ...nextNotes];
     edges = nextEdges;
     if (typeof d.seed === 'number') seed = d.seed;
     return null;
@@ -296,6 +380,8 @@ function createDesignStore() {
     removeEdges,
     duplicateNode,
     updateNodeProps,
+    addNote,
+    updateNoteText,
     toSpec,
     toJSON,
     fromJSON

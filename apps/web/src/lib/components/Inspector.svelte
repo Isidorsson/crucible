@@ -30,9 +30,17 @@
     onSelect: (id: string | null) => void;
   } = $props();
 
-  const entry = $derived(selected ? CATALOG_BY_KIND[selected.data.kind] : null);
+  // Note nodes share the design.nodes array but use a different `type`.
+  // Inspector ignores them entirely — they're text-only, no props to edit
+  // beyond the textarea on the node itself.
+  const isCrucible = $derived(selected?.type === 'crucible');
+  const entry = $derived(
+    selected && isCrucible ? CATALOG_BY_KIND[selected.data.kind] : null
+  );
   const engineKind = $derived(entry?.engineKind);
-  const antiPatterns = $derived(selected ? ANTI_PATTERNS_BY_KIND[selected.data.kind] ?? [] : []);
+  const antiPatterns = $derived(
+    selected && isCrucible ? ANTI_PATTERNS_BY_KIND[selected.data.kind] ?? [] : []
+  );
   const metrics = $derived(selected ? sim.metricsByNode[selected.id] : undefined);
   const activeFault = $derived<FaultKind>(
     selected ? (sim.activeFaultByNode[selected.id] ?? FaultNone) : FaultNone
