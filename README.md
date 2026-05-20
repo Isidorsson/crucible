@@ -8,12 +8,16 @@ Not a diagramming tool. Architectures actually **run**.
 
 ## What it does
 
-- **Drag & drop components** — Source, Load Balancer, Service, Cache, Database, Queue
-- **Wire them up** — connect ports, define how requests flow
-- **Drive traffic** — global RPS slider, 1 → 1,000,000 requests per second
+- **Drag & drop components** — 23-kind catalog: clients, CDN, WAF, DNS, LB, services, functions, workers, caches (Redis / Memcached), databases (Postgres / MySQL / Mongo / DynamoDB / Cassandra / Elasticsearch), queues (Kafka / RabbitMQ / SQS), event bus
+- **Wire them up** — easy-connect floating edges, drop-to-create, strict port rules
+- **Drive traffic** — global RPS scrubber, 1 → 1,000,000 requests per second, decade chips
 - **Speed up time** — 0.25x / 1x / 2x / 5x / 100x / max
-- **Inject chaos** — kill nodes, slow them down, drop packets
-- **Watch metrics live** — per-node throughput, p50/p99 latency, in-flight, queue depth, error rate
+- **Inject chaos** — kill nodes, slow them down, drop packets; live fault flash on the canvas
+- **Watch metrics live** — per-node throughput, p50/p99 latency, in-flight, queue depth, error rate, sparklines, capacity gauges, edge rps pills
+- **Topology lint** — 9 rules over the spec, anti-pattern chips per node, worst-p99 diagnosis pill
+- **Cost + SLO chips** — per-node monthly $ + p99 budget, total $/mo in the toolbar
+- **Templates + scenarios** — 13 starter architectures, 6 scripted drills (cache stampede, DB failover, thundering herd, …)
+- **Save / share** — export / import canvas as JSON, sticky-note annotations, keyboard shortcuts overlay
 
 Built for system design interview prep, architecture validation, and teaching distributed systems concepts.
 
@@ -29,7 +33,7 @@ Built for system design interview prep, architecture validation, and teaching di
 | Styling | Tailwind | Dark theme out of box |
 | Simulation | Go → TinyGo → WASM | Same code testable with `go test`, ships ~200KB |
 | Sim host | Web Worker | Keeps main thread at 60fps regardless of sim load |
-| Storage | localStorage v1 → Supabase Postgres later | Zero infra to start |
+| Storage | JSON export/import today → Supabase Postgres later | Zero infra to start |
 | Deploy | Vercel (static) | Free, fast, no Node runtime needed |
 | Package mgr | bun | Fast install, fast scripts |
 
@@ -69,14 +73,16 @@ type Node interface {
 }
 ```
 
-Concrete nodes in `sim/nodes/`:
+Engine kinds in `sim/nodes/` (the simulator has 6 archetypes; the frontend catalog maps 23 UI kinds onto them via `engineKind`):
 
-- **Source** — Poisson arrivals at configurable RPS (`ExpNs`)
-- **LoadBalancer** — round-robin / least-in-flight / random; filters faulted backends
-- **Service** — capacity, queue limit, log-normal service time
+- **Source** — Poisson arrivals at configurable RPS (`ExpNs`); orphan sources fail requests instead of marking them complete
+- **LoadBalancer** — round-robin / least-in-flight / random; filters faulted backends; round-robin fans out across multiple downstreams
+- **Service** — capacity, queue limit, log-normal service time; propagates downstream failures back up the err_rate chain
 - **Cache** — hit/miss; miss forwards downstream
 - **Database** — slow service preset
 - **Queue** — buffer + drain rate
+
+Nodes and edges can be hot-added while the sim is running.
 
 ### Metrics
 
@@ -209,32 +215,25 @@ Type contract in `apps/web/src/lib/sim/wasm_exec.d.ts`.
 
 ---
 
-## Roadmap
+## Screenshots
 
-### v0 (now)
-- [x] Canvas + drag/drop palette + connect
-- [x] Go sim engine with 6 node kinds
-- [x] Web Worker + WASM bridge
-- [x] Live metrics per node
-- [x] Speed + global RPS controls
-- [x] Chaos buttons (kill / slow / loss)
+Empty canvas — palette grouped by category (sources / edge / compute / storage / async / observability).
 
-### v0.1
-- [ ] Packet animation layer (visual requests flowing along edges)
-- [ ] Request GC (drop completed from `Sim.Requests` map)
-- [ ] Save / load topology to localStorage
-- [ ] Preset designs (3-tier, fan-out, write-through cache, pub/sub)
+![Empty canvas](docs/screenshots/01-canvas.png)
 
-### v0.2
-- [ ] Share replay link (seed + topology in URL hash)
-- [ ] Tutorial mode with annotated walkthroughs
-- [ ] Per-edge latency injection (network simulation)
-- [ ] Circuit breaker node
+Templates tab — 13 starter architectures, each labelled by node + edge count.
 
-### v1
-- [ ] Accounts (Clerk) + cloud save (Supabase)
-- [ ] Public gallery of designs
-- [ ] Export topology as terraform / k8s manifest stubs
+![Templates panel](docs/screenshots/02-templates.png)
+
+Mid-drill — `Baseline traffic at 100 rps` running through Client → Gateway → Redis → App → Postgres. Live rps + p50/p99 per node, edge pills, worst-p99 chip, cost meter, born/done/fail counters in the StatusBar.
+
+![Running simulation](docs/screenshots/03-running.png)
+
+Inspector — selected node shows engine props, live metrics, chaos buttons, anti-pattern chips.
+
+![Inspector](docs/screenshots/04-inspector.png)
+
+Regenerate via `bun scripts/screenshots.ts` (dev server must be running on `:5173`).
 
 ---
 
