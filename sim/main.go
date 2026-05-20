@@ -68,8 +68,12 @@ func jsStep(this js.Value, args []js.Value) any {
 	if simBudget <= 0 {
 		simBudget = 1
 	}
-	// cap events to avoid pegging the worker
-	processed := sim.Step(simBudget, 50_000)
+	// Cap events to avoid pegging the worker. 10k keeps each Step under
+	// ~10-20ms wall on typical topologies so the worker can drain control
+	// messages (setSpeed, pause, stop) within one frame — previously
+	// 50k let max-speed Steps run 50-100ms before yielding, so a click on
+	// "1x" while at max could feel briefly frozen before slowing down.
+	processed := sim.Step(simBudget, 10_000)
 	return js.ValueOf(processed)
 }
 
