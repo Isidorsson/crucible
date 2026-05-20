@@ -5,6 +5,13 @@ import {
   Network,
   Cloud,
   Workflow,
+  BookCopy,
+  Gauge,
+  Plug,
+  BrainCircuit,
+  Activity,
+  Search,
+  Boxes,
   type Icon as LucideIcon
 } from '@lucide/svelte';
 import type { NodeKind, NodeProps } from './topology';
@@ -157,6 +164,174 @@ export const TEMPLATES: Template[] = [
       { from: 2, to: 3 },
       { from: 2, to: 4 },
       { from: 2, to: 5 }
+    ]
+  },
+  {
+    id: 'read-replicas',
+    label: 'Master + Read Replicas',
+    description: 'Reads fan out to replicas via a cache; writes go to primary.',
+    icon: BookCopy,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'apiGateway', dx: COL, dy: ROW },
+      { kind: 'redis', dx: COL * 2, dy: ROW },
+      { kind: 'loadbalancer', dx: COL * 3, dy: ROW },
+      { kind: 'readReplica', dx: COL * 4, dy: 0 },
+      { kind: 'readReplica', dx: COL * 4, dy: ROW },
+      { kind: 'postgres', dx: COL * 4, dy: ROW * 2 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 3, to: 5 },
+      { from: 3, to: 6 }
+    ]
+  },
+  {
+    id: 'sharded-service',
+    label: 'Sharded Service',
+    description: 'Gateway shards requests across independent service+DB pairs.',
+    icon: Boxes,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'apiGateway', dx: COL, dy: ROW },
+      { kind: 'loadbalancer', dx: COL * 2, dy: ROW },
+      { kind: 'microservice', dx: COL * 3, dy: 0 },
+      { kind: 'microservice', dx: COL * 3, dy: ROW },
+      { kind: 'microservice', dx: COL * 3, dy: ROW * 2 },
+      { kind: 'postgres', dx: COL * 4, dy: 0 },
+      { kind: 'postgres', dx: COL * 4, dy: ROW },
+      { kind: 'postgres', dx: COL * 4, dy: ROW * 2 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 2, to: 4 },
+      { from: 2, to: 5 },
+      { from: 3, to: 6 },
+      { from: 4, to: 7 },
+      { from: 5, to: 8 }
+    ]
+  },
+  {
+    id: 'rate-limited-api',
+    label: 'Rate-Limited API',
+    description: 'Edge defense stack: WAF → rate limiter → circuit breaker → service.',
+    icon: Gauge,
+    nodes: [
+      { kind: 'mobileClient', dx: 0, dy: 0 },
+      { kind: 'waf', dx: COL, dy: 0 },
+      { kind: 'rateLimiter', dx: COL * 2, dy: 0 },
+      { kind: 'authService', dx: COL * 3, dy: 0 },
+      { kind: 'circuitBreaker', dx: COL * 4, dy: 0 },
+      { kind: 'appServer', dx: COL * 5, dy: 0 },
+      { kind: 'postgres', dx: COL * 6, dy: 0 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 },
+      { from: 5, to: 6 }
+    ]
+  },
+  {
+    id: 'realtime-chat',
+    label: 'Realtime Chat',
+    description: 'WebSocket fleet fans messages out via Redis pub/sub.',
+    icon: Plug,
+    nodes: [
+      { kind: 'mobileClient', dx: 0, dy: 0 },
+      { kind: 'webClient', dx: 0, dy: ROW * 2 },
+      { kind: 'loadbalancer', dx: COL, dy: ROW },
+      { kind: 'websocketServer', dx: COL * 2, dy: 0 },
+      { kind: 'websocketServer', dx: COL * 2, dy: ROW * 2 },
+      { kind: 'redis', dx: COL * 3, dy: ROW },
+      { kind: 'postgres', dx: COL * 4, dy: ROW }
+    ],
+    edges: [
+      { from: 0, to: 2 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 2, to: 4 },
+      { from: 3, to: 5 },
+      { from: 4, to: 5 },
+      { from: 5, to: 6 }
+    ]
+  },
+  {
+    id: 'cdc-search',
+    label: 'Search Index via CDC',
+    description: 'Postgres writes → Kafka → stream processor → Elasticsearch.',
+    icon: Search,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'appServer', dx: COL, dy: ROW },
+      { kind: 'postgres', dx: COL * 2, dy: 0 },
+      { kind: 'kafka', dx: COL * 3, dy: 0 },
+      { kind: 'streamProcessor', dx: COL * 4, dy: 0 },
+      { kind: 'elasticsearch', dx: COL * 5, dy: 0 },
+      { kind: 'appServer', dx: COL * 2, dy: ROW * 2 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 },
+      { from: 1, to: 6 },
+      { from: 6, to: 5 }
+    ]
+  },
+  {
+    id: 'rag-inference',
+    label: 'RAG / LLM Inference',
+    description: 'Query → embed → vector search → LLM → response.',
+    icon: BrainCircuit,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'apiGateway', dx: COL, dy: ROW },
+      { kind: 'appServer', dx: COL * 2, dy: ROW },
+      { kind: 'mlModelServer', dx: COL * 3, dy: 0 },
+      { kind: 'vectorDB', dx: COL * 4, dy: 0 },
+      { kind: 'mlModelServer', dx: COL * 3, dy: ROW * 2 },
+      { kind: 'redis', dx: COL * 4, dy: ROW * 2 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 2, to: 5 },
+      { from: 2, to: 6 }
+    ]
+  },
+  {
+    id: 'observability-pipeline',
+    label: 'Observability Pipeline',
+    description: 'Services → Kafka → stream processor → time-series DB + warehouse.',
+    icon: Activity,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'appServer', dx: COL, dy: 0 },
+      { kind: 'appServer', dx: COL, dy: ROW * 2 },
+      { kind: 'kafka', dx: COL * 2, dy: ROW },
+      { kind: 'streamProcessor', dx: COL * 3, dy: ROW },
+      { kind: 'timeseriesDB', dx: COL * 4, dy: 0 },
+      { kind: 'dataWarehouse', dx: COL * 4, dy: ROW * 2 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 0, to: 2 },
+      { from: 1, to: 3 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 },
+      { from: 4, to: 6 }
     ]
   }
 ];
