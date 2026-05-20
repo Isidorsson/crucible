@@ -44,6 +44,18 @@ export interface NodeCatalogEntry {
    */
   details: string;
   defaults: NodeProps;
+  /** Expand abbreviated labels (CDN, WAF, DNS, SQS, …). */
+  acronym?: string;
+  /** 2–3 ways this component fails in the wild. Pairs with chaos buttons. */
+  failureModes?: string[];
+  /** Components that commonly sit next to this one. Renders as chips. */
+  pairsWith?: NodeKind[];
+  /** One-line anti-pattern. The "don't use it like this" note. */
+  whenNotToUse?: string;
+  /** Anchors the dials — typical throughput / latency range in real systems. */
+  realWorldRange?: string;
+  /** How this component scales (horizontal, vertical, sharding, …). */
+  scaling?: string;
 }
 
 export interface CategoryMeta {
@@ -464,8 +476,381 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
   }
 ];
 
+// Educational metadata layered on top of NODE_CATALOG. Kept separate so the
+// shape stays auditable in one place and the headline catalog stays terse.
+// Every field is optional — Inspector renders only what's present.
+type ExtraMeta = Pick<
+  NodeCatalogEntry,
+  'acronym' | 'failureModes' | 'pairsWith' | 'whenNotToUse' | 'realWorldRange' | 'scaling'
+>;
+
+const META: Partial<Record<NodeKind, ExtraMeta>> = {
+  // ── sources ────────────────────────────────────────────────────────────
+  source: {
+    realWorldRange: '1–100k rps depending on test.',
+    scaling: 'Synthetic generator — bump rps; no scaling story of its own.',
+    failureModes: ['Drives load, does not experience failures.'],
+    whenNotToUse: 'When you want a realistic client mix — use Web/Mobile Client instead.',
+    pairsWith: ['cdn', 'loadbalancer', 'apiGateway']
+  },
+  webClient: {
+    realWorldRange: 'Per-user ~0.1–2 rps; aggregate = DAU × actions/session.',
+    scaling: 'Scale via traffic, not config.',
+    failureModes: [
+      'Flaky networks add tail latency on the client side.',
+      'Browser cache can hide backend issues during testing.'
+    ],
+    whenNotToUse: 'For machine-to-machine load — use Traffic Source.',
+    pairsWith: ['cdn', 'dns', 'loadbalancer']
+  },
+  mobileClient: {
+    realWorldRange: 'Bursty — push fan-in can spike 10×–100× baseline in seconds.',
+    scaling: 'Backend must absorb the bursts.',
+    failureModes: [
+      'Push-notification thundering herd after a campaign send.',
+      'Cold-start spikes after app launch hit auth and feed APIs.'
+    ],
+    whenNotToUse: 'For steady server-to-server traffic.',
+    pairsWith: ['apiGateway', 'cdn']
+  },
+  cronJob: {
+    realWorldRange: '0.001–10 rps; scheduled nightly or hourly.',
+    scaling: 'Shard the job and fan out; do not run one big task.',
+    failureModes: [
+      'Heavy job collides with peak user traffic on shared DB.',
+      'Missed run cascades into next-day backlog.'
+    ],
+    whenNotToUse: 'For real-time work — use Worker + Queue.',
+    pairsWith: ['worker', 'postgres', 'blobStore']
+  },
+
+  // ── edge ───────────────────────────────────────────────────────────────
+  cdn: {
+    acronym: 'Content Delivery Network',
+    realWorldRange: 'Hit rate 80–99% static; <50% personalized content.',
+    scaling: 'Horizontal by design — edge POPs scale by provider.',
+    failureModes: [
+      'Cache stampede on cold launch.',
+      'Stale content lingers after origin update if TTL is long.',
+      'Misconfigured Cache-Control leaks personalized data.'
+    ],
+    whenNotToUse: 'For dynamic per-user responses — wastes cache slots.',
+    pairsWith: ['webServer', 'loadbalancer', 'blobStore']
+  },
+  apiGateway: {
+    realWorldRange: '1k–100k rps per instance; new-instance cold start ~1–5s.',
+    scaling: 'Horizontal; stateless when auth tokens self-validate (JWT).',
+    failureModes: [
+      'Connection exhaustion under burst.',
+      'Rate-limiter false positives block legit users.',
+      'Auth-service dependency cascades into 503s.'
+    ],
+    whenNotToUse: 'For internal service-to-service — overhead does not earn its keep.',
+    pairsWith: ['waf', 'appServer', 'loadbalancer']
+  },
+  loadbalancer: {
+    realWorldRange: '10k–500k rps per node (HAProxy/NGINX); cloud LBs scale further.',
+    scaling: 'Anycast or DNS round-robin in front of multiple LBs.',
+    failureModes: [
+      'Sticky sessions pin load to one backend.',
+      'Slow health checks route to dead nodes.',
+      'leastInFlight can starve slow backends and amplify imbalance.'
+    ],
+    whenNotToUse: 'For single-backend services — skip the hop.',
+    pairsWith: ['webServer', 'appServer', 'microservice']
+  },
+  reverseProxy: {
+    realWorldRange: '10k–100k rps per NGINX/Envoy node; adds ~0.1–1ms.',
+    scaling: 'Horizontal; usually paired with a load balancer.',
+    failureModes: [
+      'TLS handshake CPU spike under burst.',
+      'Buffer exhaustion on slow clients.',
+      'Config reload drops in-flight connections if not graceful.'
+    ],
+    whenNotToUse: 'For pure pass-through — skip it.',
+    pairsWith: ['appServer', 'loadbalancer', 'waf']
+  },
+  waf: {
+    acronym: 'Web Application Firewall',
+    realWorldRange: 'Adds 0.3–2ms inspection; blocks ~1–5% of internet traffic.',
+    scaling: 'Horizontal at edge; rules-engine cost grows with ruleset.',
+    failureModes: [
+      'False positives block legit users.',
+      'Novel attack patterns bypass static rules.',
+      'Rule update bumps p99 latency unexpectedly.'
+    ],
+    whenNotToUse: 'For internal/authenticated APIs — inspection wasted.',
+    pairsWith: ['apiGateway', 'cdn']
+  },
+  dns: {
+    acronym: 'Domain Name System',
+    realWorldRange: 'TTL-cached lookups ~0ms; cold lookup 10–100ms.',
+    scaling: 'Anycast resolvers; provider-managed.',
+    failureModes: [
+      'Resolver outage = total outage for affected zones.',
+      'Long TTL slows propagation on record change.',
+      'DDoS amplification target if recursion left open.'
+    ],
+    whenNotToUse: 'Inside a VPC for service-to-service — use service discovery.',
+    pairsWith: ['cdn', 'loadbalancer']
+  },
+
+  // ── compute ────────────────────────────────────────────────────────────
+  service: {
+    realWorldRange: '~1k–50k rps stateless; ~100–5k rps with DB hops.',
+    scaling: 'Horizontal; stateless if session kept out of memory.',
+    failureModes: [
+      'Slow downstream cascades into the service.',
+      'Thread/connection pool exhaustion.',
+      'Memory leak under sustained load.'
+    ],
+    whenNotToUse: 'When the specific shape matters — pick Web/App/Microservice.',
+    pairsWith: ['postgres', 'redis', 'queue']
+  },
+  webServer: {
+    realWorldRange: '10k–100k rps static; ~1k–10k as proxy to app server.',
+    scaling: 'Horizontal; lightweight workers (NGINX, Caddy).',
+    failureModes: [
+      'File descriptor exhaustion.',
+      'Slow client connections eat workers.',
+      'Static content cache invalidation gaps.'
+    ],
+    whenNotToUse: 'For business logic — push to App Server.',
+    pairsWith: ['appServer', 'cdn', 'loadbalancer']
+  },
+  appServer: {
+    realWorldRange: '100–5k rps per instance; ~5–50ms p99 with DB calls.',
+    scaling: 'Horizontal; usually behind a load balancer.',
+    failureModes: [
+      'DB connection pool exhaustion.',
+      'GC pauses (JVM, Node) spike p99.',
+      'Sync I/O blocks the worker thread/event loop.'
+    ],
+    whenNotToUse: 'For pure static-content serving — Web Server / CDN is cheaper.',
+    pairsWith: ['postgres', 'redis', 'queue']
+  },
+  microservice: {
+    realWorldRange: '100–10k rps per service; ~5–50ms p99 typical.',
+    scaling: 'Horizontal; each service independently.',
+    failureModes: [
+      'Fan-out tail latency — N services = N chances for slow tail.',
+      'Distributed-tracing gaps mask root causes.',
+      'Network partition mid-saga leaves inconsistent state.'
+    ],
+    whenNotToUse: 'For small teams or simple domains — operational tax is high.',
+    pairsWith: ['apiGateway', 'queue', 'postgres']
+  },
+  function: {
+    realWorldRange: 'Cold start ~50–500ms; warm ~1–50ms. ~1k concurrent/region default.',
+    scaling: 'Provider-managed; per-account concurrency limits.',
+    failureModes: [
+      'Cold-start latency on the first request after idle.',
+      'Provider concurrency throttling at burst.',
+      'Stateless reloads drop in-memory caches.'
+    ],
+    whenNotToUse: 'For sustained high-rps workloads — App Server is cheaper at scale.',
+    pairsWith: ['apiGateway', 'dynamodb', 'sqs']
+  },
+  worker: {
+    realWorldRange: '1–1000 tasks/sec per worker depending on task weight.',
+    scaling: 'Horizontal; partition by queue/topic.',
+    failureModes: [
+      'Slow tasks block the worker pool.',
+      'Retry storms on a persistent failure.',
+      'Ungraceful shutdown loses in-flight work.'
+    ],
+    whenNotToUse: 'For sub-50ms request work — inline in App Server.',
+    pairsWith: ['queue', 'kafka', 'postgres']
+  },
+
+  // ── caching ────────────────────────────────────────────────────────────
+  cache: {
+    realWorldRange: 'Hit rate 50–99%; sub-ms latency on hit.',
+    scaling: 'Horizontal via sharding / consistent hashing.',
+    failureModes: [
+      'Cache stampede on cold key.',
+      'Eviction storms when at capacity.',
+      'Stale-data bugs from invalidation gaps.'
+    ],
+    whenNotToUse: 'For consistency-sensitive reads — go to the source DB.',
+    pairsWith: ['postgres', 'mysql', 'appServer']
+  },
+  redis: {
+    realWorldRange: '~50k–500k ops/sec per node; <1ms p99 in-network.',
+    scaling: 'Cluster mode for horizontal; ~10s of GB per node.',
+    failureModes: [
+      'Single-thread bottleneck on a hot key.',
+      'Eviction collapse when maxmemory hit.',
+      'Async-replication failover can lose last writes.'
+    ],
+    whenNotToUse: 'For durable source-of-truth data — use a database.',
+    pairsWith: ['postgres', 'appServer', 'queue']
+  },
+  memcached: {
+    realWorldRange: '~100k–1M ops/sec per node; <1ms latency.',
+    scaling: 'Horizontal via client-side consistent hashing.',
+    failureModes: [
+      'Losing a node evicts its shard entirely.',
+      'No persistence — cold restart = empty cache.',
+      'Large values fragment slabs and waste memory.'
+    ],
+    whenNotToUse: 'When you need data structures beyond KV — Redis.',
+    pairsWith: ['appServer', 'mysql', 'postgres']
+  },
+
+  // ── data ───────────────────────────────────────────────────────────────
+  database: {
+    realWorldRange: '1k–50k QPS per node depending on engine + workload.',
+    scaling: 'Read replicas easy; write scaling needs sharding.',
+    failureModes: [
+      'Connection-pool exhaustion.',
+      'Replication lag under write burst.',
+      'Lock contention on hot rows.'
+    ],
+    whenNotToUse: 'For non-transactional analytics — use a warehouse.',
+    pairsWith: ['cache', 'appServer', 'worker']
+  },
+  postgres: {
+    realWorldRange: '~5k–50k QPS/node; p99 ~5–20ms indexed; ~100–500 conns default.',
+    scaling: 'Read replicas easy; write scaling via sharding (Citus/manual) — hard.',
+    failureModes: [
+      'Connection-pool exhaustion (use pgbouncer).',
+      'Vacuum stalls on high-churn tables.',
+      'Long transactions block DDL and bloat tables.',
+      'Replication lag spikes under write burst.'
+    ],
+    whenNotToUse: 'For multi-region writes with low latency — pick a globally-distributed DB.',
+    pairsWith: ['redis', 'appServer', 'worker']
+  },
+  mysql: {
+    realWorldRange: '~5k–80k QPS/node; p99 ~5–15ms; thread-pool limits concurrency.',
+    scaling: 'Read replicas; writes via Vitess or manual sharding.',
+    failureModes: [
+      'InnoDB lock waits on hot rows.',
+      'Replica lag from row-based replication.',
+      'Connection-thread limits cap concurrency.'
+    ],
+    whenNotToUse: 'For rich JSON/array querying — Postgres is better.',
+    pairsWith: ['redis', 'appServer', 'memcached']
+  },
+  mongo: {
+    realWorldRange: '~10k–100k ops/sec per shard; p99 ~5–20ms.',
+    scaling: 'Sharded clusters; replica sets for HA.',
+    failureModes: [
+      'Lock contention on large documents.',
+      'Unbounded array fields blow up document size.',
+      'Chunk migration thrash under a hot shard key.'
+    ],
+    whenNotToUse: 'For multi-document transactional integrity — relational is safer.',
+    pairsWith: ['appServer', 'redis']
+  },
+  dynamodb: {
+    realWorldRange: 'Single-digit ms at any scale; ~3k read / 1k write units per partition.',
+    scaling: 'Provider-managed; auto-scaling or on-demand capacity.',
+    failureModes: [
+      'Hot partition throttling on bad key design.',
+      'Item growth past 400KB hard limit.',
+      'Cost explosion from full-table scans.'
+    ],
+    whenNotToUse: 'For ad-hoc analytical queries — design access patterns up front.',
+    pairsWith: ['function', 'apiGateway']
+  },
+  cassandra: {
+    realWorldRange: '~10k–100k writes/sec per node; reads slower (~5k–30k).',
+    scaling: 'Linear horizontal — add nodes, ring rebalances.',
+    failureModes: [
+      'Wide-partition collapse from bad partition keys.',
+      'Read-repair storms on inconsistent replicas.',
+      'Compaction backlog kills disk I/O.'
+    ],
+    whenNotToUse: 'For strong consistency or transactional workloads.',
+    pairsWith: ['kafka', 'worker']
+  },
+  elasticsearch: {
+    realWorldRange: '~1k–10k indexing/sec per node; reads vary by query shape.',
+    scaling: 'Horizontal via shards + replicas.',
+    failureModes: [
+      'JVM heap pressure on large aggregations.',
+      'Refresh interval too short kills write throughput.',
+      'Mapping explosion on dynamic fields.'
+    ],
+    whenNotToUse: 'As a primary DB — eventually consistent, expensive writes.',
+    pairsWith: ['kafka', 'postgres', 'worker']
+  },
+  blobStore: {
+    realWorldRange: '~100–1k req/sec per prefix; effectively unlimited in parallel.',
+    scaling: 'Provider-managed; spread keys across prefixes for parallelism.',
+    failureModes: [
+      'Prefix-rate throttling on hot key patterns.',
+      'Eventual consistency on overwrite (some providers).',
+      'Lifecycle-rule misconfig deletes live data.'
+    ],
+    whenNotToUse: 'As a database substitute — high per-request latency, no querying.',
+    pairsWith: ['cdn', 'worker', 'function']
+  },
+
+  // ── messaging ──────────────────────────────────────────────────────────
+  queue: {
+    realWorldRange: '1k–100k msgs/sec; depth grows when consumer < producer.',
+    scaling: 'Partition by key; one consumer per partition.',
+    failureModes: [
+      'Consumer slower than producer = unbounded growth.',
+      'Poison message blocks the pipeline.',
+      'Drop-at-max loses data silently if not alarmed.'
+    ],
+    whenNotToUse: 'For synchronous RPC — adds round-trip latency.',
+    pairsWith: ['worker', 'appServer']
+  },
+  kafka: {
+    realWorldRange: '100k–1M msgs/sec per broker; ms-scale producer ack.',
+    scaling: 'Add brokers + partitions; consumer-group parallelism per partition.',
+    failureModes: [
+      'Unbalanced partitions stall one consumer.',
+      'Disk fills before retention rotates.',
+      'Rebalance storms freeze the consumer group.'
+    ],
+    whenNotToUse: 'For low-volume routing or RPC — RabbitMQ/SQS is simpler.',
+    pairsWith: ['worker', 'elasticsearch', 'cassandra']
+  },
+  rabbitmq: {
+    acronym: 'AMQP broker (Advanced Message Queuing Protocol)',
+    realWorldRange: '10k–50k msgs/sec per node; ms-scale latency.',
+    scaling: 'Federation/sharding; not built for Kafka-scale throughput.',
+    failureModes: [
+      'Memory alarm pauses producers.',
+      'Mirror sync lag on cluster heal.',
+      'Slow consumer holds messages unacked indefinitely.'
+    ],
+    whenNotToUse: 'For replay or high-throughput streams — Kafka.',
+    pairsWith: ['worker', 'microservice']
+  },
+  sqs: {
+    acronym: 'Simple Queue Service',
+    realWorldRange: 'Standard: nearly unlimited; FIFO: ~3k msgs/sec/group with batching.',
+    scaling: 'Provider-managed; auto-scales.',
+    failureModes: [
+      'Standard queues deliver out-of-order and may duplicate.',
+      'Visibility-timeout too short = double processing.',
+      'DLQ fills silently if not alarmed.'
+    ],
+    whenNotToUse: 'For ordered processing on standard — use FIFO or Kafka.',
+    pairsWith: ['function', 'worker', 'eventBus']
+  },
+  eventBus: {
+    realWorldRange: 'Fan-out throughput depends on backing broker.',
+    scaling: 'Backing provider scales (SNS, EventBridge, Kafka topics).',
+    failureModes: [
+      'Slow consumer holds up others (broker-dependent).',
+      'No replay on some backings — loss is permanent.',
+      'Schema drift breaks consumers silently.'
+    ],
+    whenNotToUse: 'For point-to-point work — use a Queue.',
+    pairsWith: ['function', 'worker', 'sqs']
+  }
+};
+
 export const CATALOG_BY_KIND: Record<NodeKind, NodeCatalogEntry> = Object.fromEntries(
-  NODE_CATALOG.map((e) => [e.kind, e])
+  NODE_CATALOG.map((e) => [e.kind, { ...e, ...(META[e.kind] ?? {}) }])
 ) as Record<NodeKind, NodeCatalogEntry>;
 
 export const CATALOG_BY_CATEGORY: Record<NodeCategory, NodeCatalogEntry[]> = (() => {

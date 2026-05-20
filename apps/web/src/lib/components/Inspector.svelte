@@ -14,6 +14,7 @@
     type NodeProps
   } from '$lib/types/topology';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
+  import type { NodeKind } from '$lib/types/topology';
   import Hint from './Hint.svelte';
   import Tooltip from './Tooltip.svelte';
   import NumberField from './NumberField.svelte';
@@ -82,6 +83,16 @@
     sim.clearFault(selected.id);
     design.removeNode(selected.id);
     onSelect(null);
+  }
+
+  // "Pairs with" chips: insert the related node beside the current one so
+  // wiring stays close to selection. Offset is a constant — close enough
+  // to draw an edge, far enough not to overlap.
+  function insertPair(kind: NodeKind) {
+    if (!selected) return;
+    const pos = { x: selected.position.x + 180, y: selected.position.y + 40 };
+    const id = design.addNode(kind, pos);
+    if (id) onSelect(id);
   }
 
   // ── live-metrics formatting ────────────────────────────────────────────
@@ -184,6 +195,12 @@
           </Tooltip>
         </div>
 
+        {#if entry.acronym}
+          <p class="text-[11px] leading-snug text-muted">
+            <span class="font-mono">{entry.label}</span> — {entry.acronym}
+          </p>
+        {/if}
+
         <div class="flex items-center gap-1" role="group" aria-label="Node actions">
           <Tooltip content={GLOSSARY.duplicate.full} side="bottom">
             {#snippet children(id)}
@@ -226,6 +243,109 @@
           </Tooltip>
         </div>
       </div>
+
+      <!-- ── about: educational metadata (collapsible) ────────────────── -->
+      {#if entry.realWorldRange || entry.scaling || entry.failureModes?.length || entry.whenNotToUse || entry.pairsWith?.length}
+        <details class="group rounded border border-line bg-bg">
+          <summary
+            class="flex cursor-pointer list-none items-center gap-1.5 rounded px-2 py-1.5 text-muted
+                   hover:text-ink
+                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <svg
+              class="h-3 w-3 shrink-0 transition-transform group-open:rotate-90"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>about this component</span>
+          </summary>
+
+          <div class="space-y-3 border-t border-line p-2.5 leading-snug">
+            {#if entry.realWorldRange}
+              <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Real-world range
+                </h4>
+                <p class="mt-0.5 text-ink">{entry.realWorldRange}</p>
+              </div>
+            {/if}
+
+            {#if entry.scaling}
+              <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  How it scales
+                </h4>
+                <p class="mt-0.5 text-ink">{entry.scaling}</p>
+              </div>
+            {/if}
+
+            {#if entry.failureModes?.length}
+              <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Failure modes
+                </h4>
+                <ul class="mt-0.5 space-y-0.5 text-ink" role="list">
+                  {#each entry.failureModes as mode (mode)}
+                    <li class="flex gap-1.5">
+                      <span class="text-warn" aria-hidden="true">·</span>
+                      <span>{mode}</span>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+
+            {#if entry.whenNotToUse}
+              <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  When not to use
+                </h4>
+                <p class="mt-0.5 text-ink">{entry.whenNotToUse}</p>
+              </div>
+            {/if}
+
+            {#if entry.pairsWith?.length}
+              <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Pairs with
+                </h4>
+                <ul class="mt-1 flex flex-wrap gap-1" role="list">
+                  {#each entry.pairsWith as kind (kind)}
+                    {@const pair = CATALOG_BY_KIND[kind]}
+                    {#if pair}
+                      <li>
+                        <Tooltip
+                          content="Insert {pair.label} next to this node. {pair.description}"
+                          side="top"
+                        >
+                          {#snippet children(id)}
+                            <button
+                              type="button"
+                              onclick={() => insertPair(kind)}
+                              aria-describedby={id}
+                              aria-label="Insert {pair.label}"
+                              class="inline-flex min-h-7 items-center gap-1 rounded border border-line bg-panel px-1.5 py-0.5
+                                     text-[11px] text-ink transition-colors
+                                     hover:border-accent hover:text-accent
+                                     focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            >
+                              <pair.icon class="h-3 w-3 text-accent" aria-hidden="true" />
+                              <span>{pair.label}</span>
+                            </button>
+                          {/snippet}
+                        </Tooltip>
+                      </li>
+                    {/if}
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+          </div>
+        </details>
+      {/if}
 
       <!-- ── live metrics (only when sim is running for this node) ────── -->
       {#if metrics}
@@ -564,5 +684,12 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+  /* Hide native disclosure marker (Safari, Firefox) — custom chevron is in markup. */
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary {
+    list-style: none;
   }
 </style>
