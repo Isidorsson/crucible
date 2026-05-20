@@ -204,18 +204,22 @@
         <span class="text-ink tabular-nums">{metrics.inFlight}</span>
       </div>
 
-      {#if metrics.queueDepth > 0}
-        <div class="flex items-center justify-between gap-2">
-          <Hint term="queue" />
-          <span class="text-warn tabular-nums">{metrics.queueDepth}</span>
-        </div>
-      {/if}
-      {#if metrics.errorRate > 0}
-        <div class="flex items-center justify-between gap-2">
-          <Hint term="errRate" />
-          <span class="text-err tabular-nums">{(metrics.errorRate * 100).toFixed(1)}%</span>
-        </div>
-      {/if}
+      <div class="flex items-center justify-between gap-2">
+        <Hint term="queue" />
+        <span
+          class="tabular-nums {metrics.queueDepth > 0 ? 'text-warn' : 'text-muted opacity-60'}"
+        >
+          {metrics.queueDepth}
+        </span>
+      </div>
+      <div class="flex items-center justify-between gap-2">
+        <Hint term="errRate" />
+        <span
+          class="tabular-nums {metrics.errorRate > 0 ? 'text-err' : 'text-muted opacity-60'}"
+        >
+          {(metrics.errorRate * 100).toFixed(1)}%
+        </span>
+      </div>
     {:else}
       <div class="italic">Idle — press Start to stream metrics</div>
     {/if}
