@@ -1,6 +1,7 @@
 <script lang="ts">
   import Palette from '$lib/components/Palette.svelte';
   import ControlBar from '$lib/components/ControlBar.svelte';
+  import StatusBar from '$lib/components/StatusBar.svelte';
   import Inspector from '$lib/components/Inspector.svelte';
   import Canvas from '$lib/canvas/Canvas.svelte';
   import { design, type CrucibleNodeData } from '$lib/stores/design.svelte';
@@ -39,4 +40,6 @@
       <Inspector {selected} onSelect={(id) => selection.set(id)} />
     </main>
   </SvelteFlowProvider>
+
+  <StatusBar />
 </div>

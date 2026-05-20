@@ -35,6 +35,10 @@
   }
 </script>
 
+<!-- Self-positioned wrapper so the popover anchors to this component, not
+     to whichever ancestor happens to be `relative`. Lets the pill live in
+     a flex bar (status bar) without leaking layout. -->
+<div class="relative">
 <!-- Toolbar pill — always rendered so it never mounts/unmounts and shifts
      adjacent toolbar items as the topology gains or loses warnings.
      A clean topology reads as "lint ok"; warnings switch to a count. -->
@@ -65,7 +69,7 @@
   <div
     role="dialog"
     aria-label="Topology lint warnings"
-    class="absolute right-3 top-full z-40 mt-1 max-h-[60vh] w-80 overflow-y-auto rounded border border-line bg-panel shadow-xl"
+    class="absolute bottom-full left-0 z-40 mb-1 max-h-[60vh] w-80 overflow-y-auto rounded border border-line bg-panel shadow-xl"
   >
     <header class="sticky top-0 flex items-center justify-between border-b border-line bg-panel px-2 py-1.5">
       <span class="font-mono text-[10px] uppercase tracking-widest text-muted">
@@ -123,3 +127,4 @@
     {/if}
   </div>
 {/if}
+</div>
