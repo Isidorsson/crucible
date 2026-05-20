@@ -46,17 +46,17 @@
   // Trend arrow: compare the last sample against the median of the prior
   // half of the window. Median (not mean) so an isolated spike doesn't
   // flip the arrow back and forth.
-  const trend = $derived.by((): '▲' | '▼' | '·' => {
+  const trend = $derived.by((): '▲' | '▼' | '–' => {
     const n = flowHistory.length;
-    if (n < 6) return '·';
+    if (n < 6) return '–';
     const recent = flowHistory[n - 1];
     const head = flowHistory.slice(0, Math.floor(n / 2)).sort((a, b) => a - b);
     const baseline = head[Math.floor(head.length / 2)];
-    if (baseline < 0.5) return '·';
+    if (baseline < 0.5) return '–';
     const delta = (recent - baseline) / baseline;
     if (delta > 0.15) return '▲';
     if (delta < -0.15) return '▼';
-    return '·';
+    return '–';
   });
 
   // Five-tier ramp. Thresholds picked so a sysadmin's intuition matches the
@@ -93,8 +93,27 @@
       : (['', 0, 0] as const)
   );
   const edgePath = $derived(pathTuple[0]);
-  const labelX = $derived(pathTuple[1]);
-  const labelY = $derived(pathTuple[2]);
+  const anchorX = $derived(pathTuple[1]);
+  const anchorY = $derived(pathTuple[2]);
+
+  // Lift label off path by perpendicular offset so edge stroke + packets
+  // never cross under the text. Direction picked from source→target vector
+  // (good enough for bezier midpoint placement) rotated 90° CCW.
+  const LABEL_OFFSET = 28;
+  const labelPos = $derived.by(() => {
+    if (!params) return { x: anchorX, y: anchorY };
+    const dx = params.tx - params.sx;
+    const dy = params.ty - params.sy;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    // Prefer label above horizontal lines: flip sign if perpendicular points down
+    const sign = ny > 0 ? -1 : 1;
+    return {
+      x: anchorX + nx * LABEL_OFFSET * sign,
+      y: anchorY + ny * LABEL_OFFSET * sign
+    };
+  });
 
   // prefers-reduced-motion check — disable packet motion if the user opted
   // out. matchMedia is safe in browser; SSR is disabled on this route.
@@ -137,6 +156,7 @@
     if (targetP99 > 0) parts.push(`p99 ${fmtLatency(targetP99)}`);
     if (trend === '▲') parts.push('rising');
     else if (trend === '▼') parts.push('falling');
+    else parts.push('steady');
     return parts.join(', ');
   });
 </script>
@@ -193,20 +213,41 @@
 {/if}
 
 {#if flow >= 1}
+  <!-- Tether: thin line from path anchor to floated label. Drawn under
+       the anchor dot so the dot caps the line cleanly. -->
+  <line
+    x1={anchorX}
+    y1={anchorY}
+    x2={labelPos.x}
+    y2={labelPos.y}
+    stroke={stroke}
+    stroke-width="1"
+    opacity="0.55"
+    aria-hidden="true"
+  />
+  <!-- Anchor dot on path -->
+  <circle
+    cx={anchorX}
+    cy={anchorY}
+    r="2.5"
+    fill={stroke}
+    stroke="#0d1117"
+    stroke-width="1.5"
+    aria-hidden="true"
+  />
   <EdgeLabel
-    x={labelX}
-    y={labelY}
+    x={labelPos.x}
+    y={labelPos.y}
     transparent
-    class="crucible-edge-pill"
+    class="crucible-edge-card"
     style="--c: {stroke};"
     aria-label={ariaSummary}
   >
+    <span class="bar" aria-hidden="true"></span>
     <span class="num">{fmtRate(flow)}</span><span class="unit">rps</span>
-    {#if trend !== '·'}
-      <span class="trend" data-dir={trend} aria-hidden="true">{trend}</span>
-    {/if}
+    <span class="trend" data-dir={trend} aria-hidden="true">{trend}</span>
     {#if targetP99 > 0}
-      <span class="sep" aria-hidden="true">·</span>
+      <span class="sep" aria-hidden="true"></span>
       <span class="lat tabular-nums">{fmtLatency(targetP99)}</span>
     {/if}
   </EdgeLabel>
@@ -217,71 +258,89 @@
     filter: drop-shadow(0 0 4px currentColor);
   }
   /* EdgeLabel portals into a shared container, so styles must be global
-     to escape Svelte's scoping hash. */
-  :global(.crucible-edge-pill) {
+     to escape Svelte's scoping hash. Card sits OFF the path, tethered by
+     a thin SVG line — so the edge stroke never crosses the text. */
+  :global(.crucible-edge-card) {
     display: inline-flex;
-    align-items: baseline;
-    gap: 3px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(13, 17, 23, 0.92);
-    border: 1px solid color-mix(in srgb, var(--c) 65%, transparent);
-    color: var(--c);
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px 4px 7px;
+    border-radius: 4px;
+    background: #0d1117;
+    border: 1px solid color-mix(in srgb, var(--c) 75%, #30363d);
+    color: #e6edf3;
     font-family:
       ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1.4;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
     letter-spacing: 0.04em;
     font-variant-numeric: tabular-nums;
     box-shadow:
-      0 0 12px color-mix(in srgb, var(--c) 30%, transparent),
-      0 0 0 1px rgba(0, 0, 0, 0.4);
+      0 0 0 1px rgba(0, 0, 0, 0.6),
+      0 0 14px color-mix(in srgb, var(--c) 35%, transparent),
+      0 2px 6px rgba(0, 0, 0, 0.7);
     white-space: nowrap;
     user-select: none;
     text-transform: uppercase;
-    backdrop-filter: blur(2px);
     transition:
-      color 220ms ease,
       border-color 220ms ease,
       box-shadow 220ms ease;
   }
-  :global(.crucible-edge-pill .num) {
-    color: var(--c);
+  :global(.crucible-edge-card .bar) {
+    width: 3px;
+    align-self: stretch;
+    background: var(--c);
+    border-radius: 2px;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--c) 70%, transparent);
   }
-  :global(.crucible-edge-pill .unit) {
-    color: color-mix(in srgb, var(--c) 55%, #7d8590);
+  :global(.crucible-edge-card .num) {
+    color: #f0f6fc;
+    font-size: 12px;
+  }
+  :global(.crucible-edge-card .unit) {
+    color: color-mix(in srgb, var(--c) 60%, #8b949e);
     font-size: 9px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    margin-left: -2px;
   }
-  :global(.crucible-edge-pill .sep) {
-    color: color-mix(in srgb, var(--c) 35%, #7d8590);
-    opacity: 0.7;
+  :global(.crucible-edge-card .sep) {
+    width: 1px;
+    height: 10px;
+    background: #30363d;
     margin: 0 2px;
   }
-  :global(.crucible-edge-pill .lat) {
-    color: color-mix(in srgb, var(--c) 85%, #c9d1d9);
-    font-size: 9px;
-    font-weight: 500;
+  :global(.crucible-edge-card .lat) {
+    color: #c9d1d9;
+    font-size: 10px;
+    font-weight: 600;
   }
-  :global(.crucible-edge-pill .trend) {
-    margin-left: 3px;
-    font-size: 9px;
+  :global(.crucible-edge-card .trend) {
+    font-size: 10px;
     line-height: 1;
     font-weight: 700;
+    margin-left: 1px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 10px;
+    text-align: center;
   }
-  :global(.crucible-edge-pill .trend[data-dir='▲']) {
+  :global(.crucible-edge-card .trend[data-dir='▲']) {
     color: #f0883e;
   }
-  :global(.crucible-edge-pill .trend[data-dir='▼']) {
+  :global(.crucible-edge-card .trend[data-dir='▼']) {
     color: #58a6ff;
+  }
+  :global(.crucible-edge-card .trend[data-dir='–']) {
+    color: #8b949e;
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.svelte-flow .crucible-edge-selected) {
       filter: none;
     }
-    :global(.crucible-edge-pill) {
+    :global(.crucible-edge-card) {
       transition: none;
     }
   }
