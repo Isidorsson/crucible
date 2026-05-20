@@ -35,31 +35,31 @@
   }
 </script>
 
-<!-- Toolbar pill — collapsed unless there are warnings or the user opened it -->
-{#if warnings.length > 0 || open}
-  <button
-    type="button"
-    onclick={() => (open = !open)}
-    aria-expanded={open}
-    aria-label="Topology warnings: {counts.error} errors, {counts.warn} warnings, {counts.info} info"
-    class="flex items-center gap-1 rounded border px-2 py-1 text-[11px]
-           transition-colors hover:border-accent
-           focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
-           {counts.error > 0
-             ? 'border-err/60 bg-err/10 text-err'
-             : counts.warn > 0
-               ? 'border-warn/40 bg-warn/10 text-warn'
-               : 'border-line bg-bg text-muted'}"
-  >
-    <ShieldAlert class="h-3 w-3" aria-hidden="true" />
-    <span class="font-mono">lint</span>
-    {#if warnings.length > 0}
-      <span class="tabular-nums">{warnings.length}</span>
-    {:else}
-      <span>ok</span>
-    {/if}
-  </button>
-{/if}
+<!-- Toolbar pill — always rendered so it never mounts/unmounts and shifts
+     adjacent toolbar items as the topology gains or loses warnings.
+     A clean topology reads as "lint ok"; warnings switch to a count. -->
+<button
+  type="button"
+  onclick={() => (open = !open)}
+  aria-expanded={open}
+  aria-label="Topology warnings: {counts.error} errors, {counts.warn} warnings, {counts.info} info"
+  class="flex items-center gap-1 rounded border px-2 py-1 text-[11px]
+         transition-colors hover:border-accent
+         focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+         {counts.error > 0
+           ? 'border-err/60 bg-err/10 text-err'
+           : counts.warn > 0
+             ? 'border-warn/40 bg-warn/10 text-warn'
+             : 'border-line bg-bg text-muted'}"
+>
+  <ShieldAlert class="h-3 w-3" aria-hidden="true" />
+  <span class="font-mono">lint</span>
+  {#if warnings.length > 0}
+    <span class="tabular-nums">{warnings.length}</span>
+  {:else}
+    <span>ok</span>
+  {/if}
+</button>
 
 {#if open}
   <div
