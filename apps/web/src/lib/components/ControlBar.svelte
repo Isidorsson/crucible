@@ -21,6 +21,7 @@
   import ExportImport from './ExportImport.svelte';
   import LintPanel from './LintPanel.svelte';
   import Shortcuts from './Shortcuts.svelte';
+  import ScenarioPicker from './ScenarioPicker.svelte';
   import { GLOSSARY } from './glossary';
 
   let exportOpen = $state(false);
@@ -346,6 +347,7 @@
     {/snippet}
   </Tooltip>
 
+  <ScenarioPicker />
   <LintPanel />
   <Shortcuts />
 
