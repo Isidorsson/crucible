@@ -54,6 +54,12 @@ func (b *base) recordLatency(ns int64) { b.lat.Add(ns) }
 func (b *base) recordCompletion()      { b.tp.Add(b.lastNow) }
 func (b *base) recordError()           { b.errors++ }
 
+// RecordUpstreamError satisfies engine.Node. Called by the sim on every
+// upstream hop of a request that died downstream so this node's
+// err_rate reflects work it handled which later failed. Distinct from
+// recordError only as a documentation aid — both bump the same counter.
+func (b *base) RecordUpstreamError() { b.errors++ }
+
 // nextDownstream returns the next downstream id by round-robin, or ""
 // when the pool is empty. Mutates outCursor so subsequent calls march.
 func (b *base) nextDownstream(pool []string) string {

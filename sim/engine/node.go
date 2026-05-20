@@ -22,6 +22,13 @@ type Node interface {
 	// how to react (drop, slow, fail).
 	SetFaulted(kind FaultKind, on bool)
 
+	// RecordUpstreamError is invoked by the sim on every prior hop of a
+	// request that ultimately failed downstream, so each node's err_rate
+	// reflects requests it handled which later died — not just the ones
+	// it dropped itself. Cheap counter bump; metrics surface it through
+	// the normal Snapshot path.
+	RecordUpstreamError()
+
 	// Snapshot reports current metrics. Cheap, called every render tick.
 	Snapshot() NodeMetrics
 }

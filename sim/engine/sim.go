@@ -133,6 +133,28 @@ func (s *Sim) Complete(req *Request) {
 func (s *Sim) FailReq(req *Request, reason string) {
 	req.Fail(reason, s.Now)
 	s.Failed++
+	// Propagate the error up the chain so every prior hop's err_rate
+	// reflects requests that died downstream. The failing node already
+	// called recordError() in its own handler, so we exclude it here.
+	// Dedupe self-requeue loops (a service requeues by re-arriving at
+	// itself, which appends a duplicate hop) to avoid double-counting.
+	if hops := len(req.Hops); hops >= 2 {
+		last := req.Hops[hops-1]
+		seen := make(map[string]struct{}, hops)
+		for i := 0; i < hops-1; i++ {
+			id := req.Hops[i]
+			if id == last {
+				continue
+			}
+			if _, dup := seen[id]; dup {
+				continue
+			}
+			seen[id] = struct{}{}
+			if n, ok := s.Nodes[id]; ok {
+				n.RecordUpstreamError()
+			}
+		}
+	}
 	delete(s.Requests, req.ID)
 }
 
