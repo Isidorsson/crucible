@@ -52,7 +52,12 @@ func (s *Source) routeOut(sim *engine.Sim, req *engine.Request) {
 	downstream := sim.Downstream(s.id)
 	target := s.nextDownstream(downstream)
 	if target == "" {
-		sim.Complete(req)
+		// Orphan source — nothing wired downstream. Emitting requests that
+		// vanish into Complete() reads as success in the snapshot, which is
+		// misleading: a source with no consumer is not serving anyone.
+		// Fail it so the user sees the wire is missing.
+		sim.FailReq(req, "no downstream")
+		s.recordError()
 		return
 	}
 	sim.Schedule(sim.Now, engine.EvRequestArrive, target, req.ID, nil)
