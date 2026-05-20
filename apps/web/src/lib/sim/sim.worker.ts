@@ -26,6 +26,14 @@ const post = (m: OutMsg) => (self as unknown as Worker).postMessage(m);
 let running = false;
 let loaded = false;
 let lastSnapshot = 0;
+// Generation counter for the tickLoop chain. Each `start`/`resume` bumps it
+// and stamps the new chain; any stale setTimeout(tickLoop, 0) queued from a
+// prior chain compares its captured id against `tickGen` and exits. Without
+// this, a stop→start sequence could leave the old chain's lingering callback
+// in the message queue; when start flips running=true the old chain sees it
+// and keeps marching alongside the new one — double-rate snapshots, doubled
+// CPU, and what looked like a "freeze" was actually two loops fighting.
+let tickGen = 0;
 // If `start` arrives while `load` is still awaiting WASM boot, stash the
 // requested speed here and fire the start sequence at the tail of the
 // load case. Without this the start handler races the boot and touches
@@ -74,8 +82,8 @@ async function bootWasm(): Promise<void> {
   }
 }
 
-function tickLoop() {
-  if (!running) return;
+function tickLoop(gen: number) {
+  if (!running || gen !== tickGen) return;
   try {
     crucible.step(TICK_BUDGET_MS);
     const now = performance.now();
@@ -92,7 +100,12 @@ function tickLoop() {
   }
   // Use setTimeout(0) instead of rAF — workers do not have requestAnimationFrame
   // and we want to yield to incoming control messages between ticks.
-  setTimeout(tickLoop, 0);
+  setTimeout(() => tickLoop(gen), 0);
+}
+
+function startTickLoop() {
+  tickGen++;
+  tickLoop(tickGen);
 }
 
 self.onmessage = async (ev: MessageEvent<InMsg>) => {
@@ -130,7 +143,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
           pendingStartSpeed = null;
           running = true;
           lastSnapshot = 0;
-          tickLoop();
+          startTickLoop();
         }
         return;
       }
@@ -142,7 +155,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
         crucible.setSpeed(msg.speed);
         running = true;
         lastSnapshot = 0;
-        tickLoop();
+        startTickLoop();
         return;
       // Speed changes that arrive while the WASM module is still booting used
       // to be silently dropped, so a user who clicked Play and then nudged
@@ -157,7 +170,7 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
       case 'resume':
         crucible.setSpeed(msg.speed);
         running = true;
-        tickLoop();
+        startTickLoop();
         return;
       case 'stop':
         running = false;
