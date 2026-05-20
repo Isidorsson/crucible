@@ -189,11 +189,21 @@ function createDesignStore() {
 
   // Centralised edge creation so the mutation listener (and hot-running
   // sim) catches every wire — even those drawn by user gestures in
-  // Canvas.svelte. Returns the new edge id, or null if the connection is
-  // rejected as a duplicate or self-loop.
+  // Canvas.svelte. Returns the new edge id, or null on a self-loop.
+  //
+  // Idempotency note: xyflow's `bind:edges` mutates the array itself when
+  // the user completes a connection (Handle.svelte calls store.addEdge
+  // before firing onconnect). Our own onConnect then calls back into this
+  // function — so for user-drawn edges, the edge is already present here.
+  // We still forward to the listener in that case; otherwise mid-sim
+  // wiring is silently dropped and the engine never picks up new traffic.
   function addEdge(source: string, target: string): string | null {
     if (source === target) return null;
-    if (edges.some((e) => e.source === source && e.target === target)) return null;
+    const existing = edges.find((e) => e.source === source && e.target === target);
+    if (existing) {
+      listener.onAddEdge?.(source, target);
+      return existing.id;
+    }
     const id = `${source}->${target}-${nanoid(4)}`;
     edges = [
       ...edges,
