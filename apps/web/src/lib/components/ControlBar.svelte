@@ -20,6 +20,7 @@
   import Scrubber from './Scrubber.svelte';
   import ExportImport from './ExportImport.svelte';
   import LintPanel from './LintPanel.svelte';
+  import Shortcuts from './Shortcuts.svelte';
   import { GLOSSARY } from './glossary';
 
   let exportOpen = $state(false);
@@ -346,6 +347,7 @@
   </Tooltip>
 
   <LintPanel />
+  <Shortcuts />
 
   <Tooltip content="Export or import this design as JSON." side="bottom">
     {#snippet children(id)}
