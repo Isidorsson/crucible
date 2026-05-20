@@ -16,6 +16,8 @@ export type NodeKind =
   | 'reverseProxy'
   | 'waf'
   | 'dns'
+  | 'rateLimiter'
+  | 'circuitBreaker'
   // compute
   | 'service'
   | 'webServer'
@@ -23,6 +25,10 @@ export type NodeKind =
   | 'microservice'
   | 'function'
   | 'worker'
+  | 'authService'
+  | 'websocketServer'
+  | 'streamProcessor'
+  | 'mlModelServer'
   // caching
   | 'cache'
   | 'redis'
@@ -36,6 +42,10 @@ export type NodeKind =
   | 'cassandra'
   | 'elasticsearch'
   | 'blobStore'
+  | 'readReplica'
+  | 'vectorDB'
+  | 'timeseriesDB'
+  | 'dataWarehouse'
   // messaging
   | 'queue'
   | 'kafka'

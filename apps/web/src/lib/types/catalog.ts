@@ -25,6 +25,16 @@ import {
   GitBranch,
   Send,
   Radio,
+  Gauge,
+  CircuitBoard,
+  Lock,
+  Plug,
+  Workflow,
+  Bot,
+  BookCopy,
+  BrainCircuit,
+  Activity,
+  Warehouse,
   type Icon as LucideIcon
 } from '@lucide/svelte';
 import type { EngineKind, NodeCategory, NodeKind, NodeProps } from './topology';
@@ -86,12 +96,18 @@ const D = {
   proxy: { capacity: 200, queueLimit: 1000, meanNs: 200_000, stdNs: 100_000 },
   waf: { capacity: 300, queueLimit: 1000, meanNs: 300_000, stdNs: 150_000 },
   dns: { capacity: 500, queueLimit: 500, meanNs: 100_000, stdNs: 50_000 },
+  rateLimiter: { capacity: 1000, queueLimit: 0, meanNs: 50_000, stdNs: 20_000 },
+  circuitBreaker: { capacity: 10000, queueLimit: 0, meanNs: 20_000, stdNs: 5_000 },
   service: { capacity: 50, queueLimit: 500, meanNs: 2_000_000, stdNs: 1_000_000 },
   web: { capacity: 100, queueLimit: 1000, meanNs: 1_500_000, stdNs: 800_000 },
   app: { capacity: 75, queueLimit: 750, meanNs: 5_000_000, stdNs: 2_000_000 },
   micro: { capacity: 60, queueLimit: 500, meanNs: 3_000_000, stdNs: 1_500_000 },
   func: { capacity: 200, queueLimit: 1000, meanNs: 100_000_000, stdNs: 30_000_000 },
   worker: { capacity: 20, queueLimit: 5000, meanNs: 50_000_000, stdNs: 20_000_000 },
+  authSvc: { capacity: 200, queueLimit: 1000, meanNs: 1_000_000, stdNs: 500_000 },
+  ws: { capacity: 5000, queueLimit: 1000, meanNs: 2_000_000, stdNs: 800_000 },
+  stream: { capacity: 100, queueLimit: 10000, meanNs: 5_000_000, stdNs: 2_000_000 },
+  mlSvc: { capacity: 8, queueLimit: 200, meanNs: 80_000_000, stdNs: 40_000_000 },
   cache: { hitRate: 0.8, capacity: 1000 },
   redis: { hitRate: 0.92, capacity: 5000 },
   memcached: { hitRate: 0.88, capacity: 5000 },
@@ -103,6 +119,10 @@ const D = {
   cassandra: { capacity: 60, queueLimit: 400 },
   elastic: { capacity: 30, queueLimit: 300 },
   blob: { capacity: 200, queueLimit: 1000 },
+  replica: { capacity: 80, queueLimit: 300 },
+  vector: { capacity: 50, queueLimit: 300 },
+  tsdb: { capacity: 100, queueLimit: 1000 },
+  warehouse: { capacity: 5, queueLimit: 50 },
   queue: { drainRPS: 100, max: 10000 },
   kafka: { drainRPS: 500, max: 1_000_000 },
   rabbit: { drainRPS: 200, max: 50_000 },
@@ -224,6 +244,28 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
       'Name resolution (Route 53, Cloudflare DNS, Bind). Almost free per request because answers cache aggressively, but a DNS outage takes everything down. Model it explicitly when you want to demonstrate that single point of failure.',
     defaults: D.dns
   },
+  {
+    kind: 'rateLimiter',
+    engineKind: 'service',
+    category: 'edge',
+    label: 'Rate Limiter',
+    icon: Gauge,
+    description: 'Token-bucket throttle — rejects excess fast.',
+    details:
+      'Throttle that caps how many requests per second a client (or IP, or tenant) can make. Above the limit, requests are rejected immediately — that fail-fast is the whole point. Sits in front of expensive services so abusive traffic never reaches them.',
+    defaults: D.rateLimiter
+  },
+  {
+    kind: 'circuitBreaker',
+    engineKind: 'service',
+    category: 'edge',
+    label: 'Circuit Breaker',
+    icon: CircuitBoard,
+    description: 'Trips open on downstream failure; fails fast.',
+    details:
+      'Wraps a downstream call. When the failure rate crosses a threshold, the breaker "opens" and short-circuits requests — failing fast instead of waiting on timeouts. Lets the rest of the system stay healthy while a sick dependency recovers.',
+    defaults: D.circuitBreaker
+  },
 
   // ── compute ──────────────────────────────────────────────────────────
   {
@@ -291,6 +333,50 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
     details:
       'Background job processor that pulls from a queue. Long per-task service times (think image resize, email send, report generation). Put a queue in front of it and watch the queue fill when drainRPS is below incoming load.',
     defaults: D.worker
+  },
+  {
+    kind: 'authService',
+    engineKind: 'service',
+    category: 'compute',
+    label: 'Auth Service',
+    icon: Lock,
+    description: 'Token / session validation — high fan-in.',
+    details:
+      'Centralized identity check (token validation, session lookup, RBAC). Almost every downstream call passes through it, which makes it a single point of failure for the whole product. Cache aggressively and design for graceful degradation.',
+    defaults: D.authSvc
+  },
+  {
+    kind: 'websocketServer',
+    engineKind: 'service',
+    category: 'compute',
+    label: 'WebSocket Server',
+    icon: Plug,
+    description: 'Long-lived connections for realtime.',
+    details:
+      'Holds persistent connections for realtime apps — chat, collaborative editing, live dashboards. Capacity here is "concurrent open sockets" not "rps", which is a very different scaling profile from a stateless HTTP service. Sticky sessions and graceful reconnection are the hard parts.',
+    defaults: D.ws
+  },
+  {
+    kind: 'streamProcessor',
+    engineKind: 'service',
+    category: 'compute',
+    label: 'Stream Processor',
+    icon: Workflow,
+    description: 'Flink/Spark — windowed event processing.',
+    details:
+      'Consumes from a log (Kafka, Kinesis) and applies windowed transformations — aggregations, joins, enrichment. Lives between an event stream and a downstream sink (warehouse, search index, alerting). Slow tasks cause consumer lag, which is the metric you watch.',
+    defaults: D.stream
+  },
+  {
+    kind: 'mlModelServer',
+    engineKind: 'service',
+    category: 'compute',
+    label: 'ML Model Server',
+    icon: Bot,
+    description: 'Inference endpoint — GPU-bound, slow.',
+    details:
+      'Serves predictions from a trained model (Triton, TorchServe, vLLM, SageMaker). GPU-bound, low effective capacity, fat tail on latency. Batch requests where possible — per-call overhead dominates throughput.',
+    defaults: D.mlSvc
   },
 
   // ── caching ──────────────────────────────────────────────────────────
@@ -416,6 +502,50 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
     details:
       'Object storage (S3, GCS, Azure Blob). Designed for large opaque blobs — images, video, backups, logs. Cheap per byte and effectively unlimited parallel throughput; per-request latency is higher than a database, so don’t use it as one.',
     defaults: D.blob
+  },
+  {
+    kind: 'readReplica',
+    engineKind: 'database',
+    category: 'data',
+    label: 'Read Replica',
+    icon: BookCopy,
+    description: 'Read-only DB copy — scales reads, lags writes.',
+    details:
+      'Asynchronous read-only copy of a primary database. Lets you fan reads out across many nodes while writes still go to the primary. Replication lag is the cost: a write returned 50ms ago may not be visible here yet — design read paths that can tolerate it.',
+    defaults: D.replica
+  },
+  {
+    kind: 'vectorDB',
+    engineKind: 'database',
+    category: 'data',
+    label: 'Vector DB',
+    icon: BrainCircuit,
+    description: 'Embedding similarity search for RAG.',
+    details:
+      'Stores embedding vectors and answers nearest-neighbor queries (Pinecone, Weaviate, Qdrant, pgvector). The backbone of RAG and semantic-search stacks. Index build is expensive; query latency depends on index type (HNSW, IVF) and dimensionality.',
+    defaults: D.vector
+  },
+  {
+    kind: 'timeseriesDB',
+    engineKind: 'database',
+    category: 'data',
+    label: 'Time-Series DB',
+    icon: Activity,
+    description: 'Write-optimized for metrics + telemetry.',
+    details:
+      'Append-only storage tuned for time-stamped data — metrics, IoT readings, observability. Writes are extremely cheap thanks to columnar compression and time-bucket partitioning. Range queries over recent data are fast; arbitrary cross-series joins are not.',
+    defaults: D.tsdb
+  },
+  {
+    kind: 'dataWarehouse',
+    engineKind: 'database',
+    category: 'data',
+    label: 'Data Warehouse',
+    icon: Warehouse,
+    description: 'OLAP store — slow per-query, huge scans.',
+    details:
+      'Columnar OLAP store (Snowflake, BigQuery, Redshift, ClickHouse). Built for analytical scans across billions of rows, not user-facing reads. Per-query latency is seconds-to-minutes, but throughput on aggregation is enormous. Feed it from a stream processor, never query it from a request path.',
+    defaults: D.warehouse
   },
 
   // ── messaging ────────────────────────────────────────────────────────
@@ -846,6 +976,122 @@ const META: Partial<Record<NodeKind, ExtraMeta>> = {
     ],
     whenNotToUse: 'For point-to-point work — use a Queue.',
     pairsWith: ['function', 'worker', 'sqs']
+  },
+
+  // ── edge (additions) ───────────────────────────────────────────────────
+  rateLimiter: {
+    realWorldRange: '100k–1M decisions/sec; rejects in <1ms.',
+    scaling: 'Horizontal; share state via Redis or sliding-window approximations.',
+    failureModes: [
+      'State store outage = either fail-open (DoS risk) or fail-closed (locks legit users out).',
+      'Per-IP limits punish shared NAT / mobile carriers.',
+      'Clock skew across nodes lets bursts slip through.'
+    ],
+    whenNotToUse: 'For internal trusted callers — wasted overhead.',
+    pairsWith: ['apiGateway', 'authService', 'redis']
+  },
+  circuitBreaker: {
+    realWorldRange: 'Sub-ms decision; trip on ~50% error rate over a sliding window.',
+    scaling: 'Per-process state — no network hop needed.',
+    failureModes: [
+      'Threshold too tight = flapping; too loose = no protection.',
+      'Half-open probe storm when many breakers retry at once.',
+      'Hides root cause from upstream metrics if not surfaced.'
+    ],
+    whenNotToUse: 'For internal calls with no fallback — failing fast helps no one.',
+    pairsWith: ['microservice', 'authService', 'database']
+  },
+
+  // ── compute (additions) ────────────────────────────────────────────────
+  authService: {
+    realWorldRange: '~1k–20k rps per instance; cache pushes effective rate 10×.',
+    scaling: 'Horizontal + aggressive token caching at callers.',
+    failureModes: [
+      'Outage cascades into 401s everywhere downstream.',
+      'Token-cache invalidation gaps let revoked sessions linger.',
+      'JWT signing-key rotation breaks verifiers that pinned the old key.'
+    ],
+    whenNotToUse: 'For per-request signature checks that can be done locally (JWT verify).',
+    pairsWith: ['apiGateway', 'redis', 'rateLimiter']
+  },
+  websocketServer: {
+    realWorldRange: '10k–1M concurrent connections per node; per-msg p99 ~2–20ms.',
+    scaling: 'Horizontal; sticky load balancing or pub/sub fan-out across nodes.',
+    failureModes: [
+      'File-descriptor exhaustion at scale.',
+      'Reconnect storm after a deploy or LB flap.',
+      'Broadcasting to many sockets serializes on one goroutine/thread.'
+    ],
+    whenNotToUse: 'For request/response semantics — HTTP is simpler.',
+    pairsWith: ['loadbalancer', 'redis', 'eventBus']
+  },
+  streamProcessor: {
+    realWorldRange: '10k–1M events/sec per worker; lag = backpressure signal.',
+    scaling: 'Partition parallelism; one task per partition.',
+    failureModes: [
+      'Stateful operators (windows, joins) explode memory on skewed keys.',
+      'Checkpoint stalls block the whole pipeline.',
+      'Replay after failure re-emits side effects unless idempotent.'
+    ],
+    whenNotToUse: 'For sub-100ms request handling — use a service.',
+    pairsWith: ['kafka', 'cassandra', 'elasticsearch', 'dataWarehouse']
+  },
+  mlModelServer: {
+    realWorldRange: '~10–500 inferences/sec per GPU; p99 50–500ms.',
+    scaling: 'Vertical (bigger GPU) or horizontal with model replicas; batching key for throughput.',
+    failureModes: [
+      'OOM on long inputs (LLMs).',
+      'Cold-load of model weights blocks first requests for seconds.',
+      'Queue fills before autoscaler reacts.'
+    ],
+    whenNotToUse: 'For deterministic transforms — a regular service is cheaper.',
+    pairsWith: ['vectorDB', 'queue', 'apiGateway']
+  },
+
+  // ── data (additions) ───────────────────────────────────────────────────
+  readReplica: {
+    realWorldRange: '~5k–100k QPS/replica; replication lag typically <100ms, can spike under load.',
+    scaling: 'Add replicas for read throughput; write throughput unchanged.',
+    failureModes: [
+      'Replication lag returns stale reads.',
+      'Long write transactions block replay on replicas.',
+      'Failover to a lagging replica loses last writes.'
+    ],
+    whenNotToUse: 'For read-your-writes consistency — go to primary or use a session-pin.',
+    pairsWith: ['postgres', 'mysql', 'cache']
+  },
+  vectorDB: {
+    realWorldRange: 'k-NN query ~5–50ms; 1k–10k QPS per node for ~768-d vectors.',
+    scaling: 'Shard by id; replicate per shard for read parallelism.',
+    failureModes: [
+      'Recall drops as index grows without re-tuning HNSW params.',
+      'Memory blowup on high-dimensional vectors.',
+      'Embedding-model drift breaks similarity assumptions silently.'
+    ],
+    whenNotToUse: 'For exact lookups by id — a KV store is faster and simpler.',
+    pairsWith: ['mlModelServer', 'appServer', 'blobStore']
+  },
+  timeseriesDB: {
+    realWorldRange: '100k–10M writes/sec; range queries sub-second on recent data.',
+    scaling: 'Time-bucket partitions + columnar compression — near-linear with hardware.',
+    failureModes: [
+      'High cardinality (per-user labels) explodes index size.',
+      'Down-sampling job lag corrupts long-range queries.',
+      'Retention misconfig keeps too much hot data, blows up storage cost.'
+    ],
+    whenNotToUse: 'For relational queries or transactional writes — use Postgres.',
+    pairsWith: ['streamProcessor', 'kafka', 'worker']
+  },
+  dataWarehouse: {
+    realWorldRange: 'Per-query seconds-to-minutes; scans 100M–10B rows comfortably.',
+    scaling: 'Compute and storage scale independently; pay-per-query or per-warehouse-uptime.',
+    failureModes: [
+      'Cost explosion from unbounded SELECT *.',
+      'Stale data when ETL pipeline lags.',
+      'Concurrent queries queue behind a single heavy scan.'
+    ],
+    whenNotToUse: 'On the request path — latency is too high; pre-aggregate to a serving store.',
+    pairsWith: ['streamProcessor', 'kafka', 'blobStore']
   }
 };
 
