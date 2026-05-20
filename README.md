@@ -233,6 +233,10 @@ Inspector — selected node shows engine props, live metrics, chaos buttons, ant
 
 ![Inspector](docs/screenshots/04-inspector.png)
 
+Microservices fan-out template, dragged in and running — gateway routes to two independent service+store pairs in parallel.
+
+![Microservices fan-out running](docs/screenshots/05-template-running.png)
+
 Regenerate via `bun scripts/screenshots.ts` (dev server must be running on `:5173`).
 
 ---
