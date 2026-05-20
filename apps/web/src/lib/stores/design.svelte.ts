@@ -193,6 +193,81 @@ function createDesignStore() {
     };
   }
 
+  // Canvas-level serialization. Keeps the visual NodeKind + positions
+  // alongside the props so a paste-back fully restores the design — the
+  // engine-only TopologySpec would lose the visual variant.
+  interface SerializedNode {
+    id: string;
+    kind: NodeKind;
+    position: { x: number; y: number };
+    props: NodeProps;
+  }
+  interface SerializedEdge {
+    id: string;
+    source: string;
+    target: string;
+  }
+  interface SerializedDesign {
+    version: 1;
+    seed: number;
+    nodes: SerializedNode[];
+    edges: SerializedEdge[];
+  }
+
+  function toJSON(): SerializedDesign {
+    return {
+      version: 1,
+      seed,
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        kind: n.data.kind,
+        position: { ...n.position },
+        props: { ...n.data.props }
+      })),
+      edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))
+    };
+  }
+
+  // Replace the whole canvas from a serialized payload. Returns an error
+  // message on a malformed input so the caller can surface it; the design
+  // is left untouched on failure.
+  function fromJSON(input: unknown): string | null {
+    if (!input || typeof input !== 'object') return 'not an object';
+    const d = input as Partial<SerializedDesign>;
+    if (d.version !== 1) return `unsupported version ${d.version ?? '<missing>'}`;
+    if (!Array.isArray(d.nodes) || !Array.isArray(d.edges)) return 'nodes/edges must be arrays';
+    // Validate every node kind exists in the catalog so we don't crash on
+    // render. Bad kinds get rejected wholesale rather than silently dropped.
+    for (const n of d.nodes) {
+      if (!n || typeof n.id !== 'string' || typeof n.kind !== 'string') return 'malformed node';
+      if (!CATALOG_BY_KIND[n.kind as NodeKind]) return `unknown node kind: ${n.kind}`;
+    }
+    const nextNodes: Node<CrucibleNodeData>[] = d.nodes.map((n) => {
+      const entry = CATALOG_BY_KIND[n.kind as NodeKind];
+      return {
+        id: n.id,
+        type: 'crucible',
+        dragHandle: DRAG_HANDLE,
+        position: { ...n.position },
+        data: {
+          kind: n.kind as NodeKind,
+          label: entry.label,
+          props: { ...entry.defaults, ...n.props }
+        }
+      };
+    });
+    const nextEdges: Edge[] = d.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: 'flow'
+    }));
+    nodes = nextNodes;
+    edges = nextEdges;
+    if (typeof d.seed === 'number') seed = d.seed;
+    return null;
+  }
+
   return {
     get nodes() {
       return nodes;
@@ -221,7 +296,9 @@ function createDesignStore() {
     removeEdges,
     duplicateNode,
     updateNodeProps,
-    toSpec
+    toSpec,
+    toJSON,
+    fromJSON
   };
 }
 

@@ -1,13 +1,25 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { Play, Pause, Square, Gauge, Activity, RotateCcw, DollarSign } from '@lucide/svelte';
+  import {
+    Play,
+    Pause,
+    Square,
+    Gauge,
+    Activity,
+    RotateCcw,
+    DollarSign,
+    Share2
+  } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
   import Scrubber from './Scrubber.svelte';
+  import ExportImport from './ExportImport.svelte';
   import { GLOSSARY } from './glossary';
+
+  let exportOpen = $state(false);
 
   // Speed presets. "max" sends a large finite multiplier (1e9); worker
   // still caps each tick to TICK_BUDGET_MS so the UI stays responsive.
@@ -306,6 +318,22 @@
     {/snippet}
   </Tooltip>
 
+  <Tooltip content="Export or import this design as JSON." side="bottom">
+    {#snippet children(id)}
+      <button
+        type="button"
+        onclick={() => (exportOpen = true)}
+        aria-label="Export or import design"
+        aria-describedby={id}
+        class="flex items-center gap-1.5 rounded border border-line bg-bg px-2.5 py-1.5
+               transition-colors hover:border-accent
+               focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <Share2 class="h-3.5 w-3.5" aria-hidden="true" /> share
+      </button>
+    {/snippet}
+  </Tooltip>
+
   {#if design.nodes.length > 0}
     <Tooltip
       content="Sum of every node's catalog costPerMonth at default scale. Anchor only — real cost moves 10× with usage."
@@ -363,4 +391,6 @@
     {/if}
   </div>
 </div>
+
+<ExportImport bind:open={exportOpen} />
 
