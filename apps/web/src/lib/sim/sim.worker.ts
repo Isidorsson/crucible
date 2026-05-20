@@ -144,6 +144,13 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
         lastSnapshot = 0;
         tickLoop();
         return;
+      // Speed changes that arrive while the WASM module is still booting used
+      // to be silently dropped, so a user who clicked Play and then nudged
+      // the speed mid-boot ended up with the engine running at the original
+      // start-time speed while the UI chip showed their newer pick.
+      // Latch the latest value into pendingStartSpeed instead — the load
+      // handler drains it on ready and the engine boots at the speed the
+      // user actually wanted.
       case 'pause':
         running = false;
         return;
@@ -158,7 +165,10 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
         if (loaded) crucible.reset();
         return;
       case 'setSpeed':
-        if (!loaded) return;
+        if (!loaded) {
+          pendingStartSpeed = msg.value;
+          return;
+        }
         crucible.setSpeed(msg.value);
         return;
       case 'setRPS':
