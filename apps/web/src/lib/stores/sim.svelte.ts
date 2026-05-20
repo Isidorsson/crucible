@@ -59,9 +59,14 @@ function createSimStore() {
   const faultTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   let worker: Worker | null = null;
-  // Wall time of the previous snapshot — used to convert per-window edge
-  // counts into a true rate (rps) so we don't display "packets per ~33ms".
-  let lastSnapshotWallMs = 0;
+  // Sim-time of the previous snapshot. Edge counts are accumulated in sim
+  // time (engine.DrainEdgeFlow resets per snapshot), so converting them to
+  // an rps that matches the node-side throughput (also sim-time windowed)
+  // requires the sim-time delta between snapshots — not the wall delta.
+  // Using wall delta made edge labels read 5× the node rps at 5× speed,
+  // 0.25× at 0.25× speed, and so on; the engine was healthy, the units
+  // just didn't agree across the two surfaces.
+  let lastSnapshotSimNs = 0;
   // Exponential moving average smoothing factor for edge flow. 0.35 keeps
   // the pill responsive to real load changes (~3 ticks to converge) but
   // smooths out the on/off aliasing when source RPS is low enough that a
@@ -97,13 +102,17 @@ function createSimStore() {
         }
         nodeHistory = nextNodeHist;
 
-        // Convert per-window counts → instantaneous rate, then EMA-smooth
-        // against the previous edgeFlowByKey so visuals don't blink on/off
-        // when traffic is sparse enough to straddle snapshot windows.
-        const now = performance.now();
-        const dtMs = lastSnapshotWallMs === 0 ? 33 : Math.max(1, now - lastSnapshotWallMs);
-        lastSnapshotWallMs = now;
-        const rateScale = 1000 / dtMs;
+        // Convert per-window counts → instantaneous sim-time rate, then
+        // EMA-smooth against the previous edgeFlowByKey so visuals don't
+        // blink on/off when traffic is sparse enough to straddle snapshot
+        // windows. Sim-time delta keeps the edge label in the same units
+        // as node throughput regardless of speed multiplier.
+        const simNow = m.payload.now;
+        const dtSimNs = lastSnapshotSimNs === 0 || simNow <= lastSnapshotSimNs
+          ? 33_000_000  // bootstrap with ~33ms-equivalent so first frame doesn't blow up
+          : simNow - lastSnapshotSimNs;
+        lastSnapshotSimNs = simNow;
+        const rateScale = 1e9 / dtSimNs;
 
         const fresh: Record<string, number> = {};
         for (const e of m.payload.edges) fresh[edgeKey(e)] = e.count * rateScale;
@@ -171,7 +180,7 @@ function createSimStore() {
     edgeFlowByKey = {};
     nodeHistory = {};
     edgeHistory = {};
-    lastSnapshotWallMs = 0;
+    lastSnapshotSimNs = 0;
     pendingMutations.length = 0;
     for (const t of faultTimers.values()) clearTimeout(t);
     faultTimers.clear();
