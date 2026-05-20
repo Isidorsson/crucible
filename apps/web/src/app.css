@@ -125,6 +125,17 @@
   -moz-appearance: none;
   padding-right: 1.875rem;
   cursor: pointer;
+  color-scheme: dark;
+}
+/* Option popup is partly OS-rendered; explicit colors stop Windows
+   from washing out non-selected items in the dark dropdown. */
+.crucible-field__select option {
+  background-color: theme('colors.panel');
+  color: theme('colors.ink');
+}
+.crucible-field__select option:checked {
+  background-color: theme('colors.accent');
+  color: theme('colors.bg');
 }
 .crucible-field__suffix {
   display: inline-flex;
