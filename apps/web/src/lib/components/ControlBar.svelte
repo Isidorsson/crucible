@@ -19,6 +19,7 @@
   import Hint from './Hint.svelte';
   import Scrubber from './Scrubber.svelte';
   import ExportImport from './ExportImport.svelte';
+  import LintPanel from './LintPanel.svelte';
   import { GLOSSARY } from './glossary';
 
   let exportOpen = $state(false);
@@ -196,7 +197,7 @@
 </script>
 
 <div
-  class="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2 font-mono text-xs text-ink"
+  class="relative flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2 font-mono text-xs text-ink"
   role="toolbar"
   aria-label="Simulation controls"
 >
@@ -343,6 +344,8 @@
       </button>
     {/snippet}
   </Tooltip>
+
+  <LintPanel />
 
   <Tooltip content="Export or import this design as JSON." side="bottom">
     {#snippet children(id)}
