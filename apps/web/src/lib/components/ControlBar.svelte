@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { Play, Pause, Square, Gauge, Activity, RotateCcw } from '@lucide/svelte';
+  import { Play, Pause, Square, Gauge, Activity, RotateCcw, DollarSign } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
@@ -131,6 +131,19 @@
     else if (sim.state === 'paused') sim.resume();
     else sim.start();
   }
+
+  // Sum monthly cost across every node on the canvas. Catalog values are
+  // order-of-magnitude AWS list prices at default scale; sum is best read
+  // as "what tier of monthly burn this design implies", not a quote.
+  const totalCost = $derived(
+    design.nodes.reduce(
+      (sum, n) => sum + (CATALOG_BY_KIND[n.data.kind].costPerMonth ?? 0),
+      0
+    )
+  );
+  const totalCostFmt = $derived(
+    totalCost >= 1000 ? `${(totalCost / 1000).toFixed(1)}k` : `${totalCost}`
+  );
 
   const playLabel = $derived(
     sim.state === 'running' ? 'Pause' : sim.state === 'paused' ? 'Resume' : 'Run'
@@ -292,6 +305,28 @@
       </button>
     {/snippet}
   </Tooltip>
+
+  {#if design.nodes.length > 0}
+    <Tooltip
+      content="Sum of every node's catalog costPerMonth at default scale. Anchor only — real cost moves 10× with usage."
+      side="bottom"
+    >
+      {#snippet children(id)}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <span
+          tabindex="0"
+          aria-describedby={id}
+          aria-label="Estimated monthly cost {totalCostFmt} dollars across {design.nodes.length} nodes"
+          class="flex cursor-help items-center gap-1 rounded border border-line bg-bg px-2 py-1
+                 text-[11px] text-muted
+                 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <DollarSign class="h-3 w-3" aria-hidden="true" />
+          <span class="tabular-nums text-ink">{totalCostFmt}</span>/mo
+        </span>
+      {/snippet}
+    </Tooltip>
+  {/if}
 
   <div class="ml-auto flex items-center gap-3" aria-live="polite" aria-atomic="false">
     {#if sim.state === 'loading'}

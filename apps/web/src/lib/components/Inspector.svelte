@@ -244,6 +244,53 @@
         </div>
       </div>
 
+      <!-- ── cost + SLO anchors (always show if defined) ────────────── -->
+      {#if entry.costPerMonth !== undefined || entry.sloP99Ms !== undefined}
+        <div class="flex flex-wrap items-center gap-2 text-[11px]">
+          {#if entry.costPerMonth !== undefined}
+            <Tooltip
+              content="Order-of-magnitude monthly cost at this node's default scale. Real costs vary 10× with usage — use as an anchor, not a quote."
+              side="bottom"
+            >
+              {#snippet children(id)}
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                <span
+                  tabindex="0"
+                  aria-describedby={id}
+                  class="cursor-help rounded border border-line bg-bg px-1.5 py-0.5 text-muted
+                         focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  ${entry.costPerMonth}/mo
+                </span>
+              {/snippet}
+            </Tooltip>
+          {/if}
+          {#if entry.sloP99Ms !== undefined}
+            {@const breach =
+              metrics && metrics.p99 / 1_000_000 > entry.sloP99Ms}
+            <Tooltip
+              content="Typical p99 latency target for this kind on the request path. Live p99 above this is shown in red."
+              side="bottom"
+            >
+              {#snippet children(id)}
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                <span
+                  tabindex="0"
+                  aria-describedby={id}
+                  class="cursor-help rounded border px-1.5 py-0.5
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+                         {breach
+                           ? 'border-err bg-err/10 text-err'
+                           : 'border-line bg-bg text-muted'}"
+                >
+                  SLO p99 ≤ {entry.sloP99Ms}ms{breach ? ' (breach)' : ''}
+                </span>
+              {/snippet}
+            </Tooltip>
+          {/if}
+        </div>
+      {/if}
+
       <!-- ── about: educational metadata (collapsible) ────────────────── -->
       {#if entry.realWorldRange || entry.scaling || entry.failureModes?.length || entry.whenNotToUse || entry.pairsWith?.length}
         <details class="group rounded border border-line bg-bg">
