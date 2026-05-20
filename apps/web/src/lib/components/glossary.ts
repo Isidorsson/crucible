@@ -176,6 +176,80 @@ export const GLOSSARY = {
   clearFault: {
     term: 'clear',
     full: 'Remove any active fault from this node. Equivalent to clicking the active chaos button a second time.'
+  },
+
+  // ── system-design concepts (referenced from META panel + tooltips) ──
+  backpressure: {
+    term: 'backpressure',
+    full: 'Downstream slowness pushing back upstream — queues fill, latency climbs, eventually drops start. The healthy response is to slow the producer, not buffer indefinitely.'
+  },
+  tailLatency: {
+    term: 'tail latency',
+    full: 'The slow end of the latency distribution — p99, p999. A request that touches N services has N chances to hit a slow tail, so multi-hop systems amplify it.'
+  },
+  thunderingHerd: {
+    term: 'thundering herd',
+    full: 'Many callers simultaneously retry, reconnect, or fetch the same key — overwhelming the target right when it just recovered. Jitter your retries.'
+  },
+  cacheStampede: {
+    term: 'cache stampede',
+    full: 'A popular cache key expires; every waiting request races to repopulate it and slams the origin. Single-flight or stale-while-revalidate prevents the collapse.'
+  },
+  hotKey: {
+    term: 'hot key',
+    full: 'A single partition / cache key receives outsized traffic — bypassing the horizontal scaling that the rest of the cluster enjoys. Symptom of bad key design.'
+  },
+  replicationLag: {
+    term: 'replication lag',
+    full: 'How far behind a replica is from the primary. A read on the replica may not see a write that just committed — design read paths to tolerate this.'
+  },
+  consistency: {
+    term: 'consistency',
+    full: 'How quickly readers see a write. Strong = read sees last write immediately; eventual = read may lag but converges. Cost vs. correctness tradeoff.'
+  },
+  idempotency: {
+    term: 'idempotency',
+    full: 'Property that applying an operation N times has the same effect as once. Required for safe retries — without it, retries duplicate work.'
+  },
+  fanOut: {
+    term: 'fan-out',
+    full: 'One request triggers N parallel downstream calls. Throughput multiplies the load; tail-latency amplifies because you wait on the slowest of N.'
+  },
+  sharding: {
+    term: 'sharding',
+    full: 'Splitting data across nodes by a key (user id, tenant). Scales writes horizontally. Cross-shard queries become expensive — choose the key carefully.'
+  },
+  cdc: {
+    term: 'CDC',
+    full: 'Change Data Capture — stream every insert/update/delete from a database into a log (Kafka, etc). Lets search indexes, caches, and warehouses follow OLTP without dual writes.'
+  },
+  cqrs: {
+    term: 'CQRS',
+    full: 'Command-Query Responsibility Segregation — separate the write model from the read model, often using different stores. Lets reads scale independently of writes at the cost of more moving parts.'
+  },
+  saga: {
+    term: 'saga',
+    full: 'Multi-step distributed transaction implemented as a sequence of local commits with compensating actions on failure. Trades atomicity for availability across services.'
+  },
+  exactlyOnce: {
+    term: 'delivery semantics',
+    full: 'At-most-once = may drop; at-least-once = may duplicate; exactly-once = neither, and expensive. Most systems are at-least-once with idempotent consumers.'
+  },
+  circuitBreakerPattern: {
+    term: 'circuit breaker',
+    full: 'Wrap a downstream call: when its failure rate crosses a threshold, the breaker opens and fails fast. Stops a sick dependency from dragging the caller down with it.'
+  },
+  rateLimitPattern: {
+    term: 'rate limiting',
+    full: 'Cap how many requests a client may make per unit time. Token-bucket allows bursts up to the bucket size; sliding-window is smoother but more state. Reject early to protect downstream.'
+  },
+  coldStart: {
+    term: 'cold start',
+    full: 'First request after idle pays the cost of loading the runtime (Lambda), the model weights (ML serving), or the cache (post-deploy). Pre-warm if SLA matters.'
+  },
+  graceful: {
+    term: 'graceful degradation',
+    full: 'When a dependency fails, return a reduced answer rather than a 500. Stale cache, default values, partial results — anything that keeps the user moving.'
   }
 } as const satisfies Record<string, GlossaryEntry>;
 
