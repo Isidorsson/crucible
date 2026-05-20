@@ -8,10 +8,12 @@
     Activity,
     RotateCcw,
     DollarSign,
-    Share2
+    Share2,
+    AlertTriangle
   } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { design } from '$lib/stores/design.svelte';
+  import { selection } from '$lib/stores/selection.svelte';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
@@ -20,6 +22,30 @@
   import { GLOSSARY } from './glossary';
 
   let exportOpen = $state(false);
+
+  // "Why is it slow?" — pick the node with the worst p99 from the latest
+  // snapshot. Filter out idle nodes (p99 == 0) so we don't point at a
+  // dormant component. The user clicks the pill to jump-select the node
+  // and open the Inspector on it.
+  const worstNode = $derived.by(() => {
+    if (!sim.snapshot) return null;
+    let worst: { id: string; p99: number } | null = null;
+    for (const n of sim.snapshot.nodes) {
+      if (n.p99 <= 0) continue;
+      if (!worst || n.p99 > worst.p99) worst = { id: n.id, p99: n.p99 };
+    }
+    return worst;
+  });
+  const worstNodeLabel = $derived(
+    worstNode
+      ? design.nodes.find((n) => n.id === worstNode!.id)?.data.label ?? worstNode.id
+      : null
+  );
+  function fmtMs(ns: number): string {
+    if (ns < 1_000_000) return `${(ns / 1_000).toFixed(0)}µs`;
+    if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(0)}ms`;
+    return `${(ns / 1_000_000_000).toFixed(2)}s`;
+  }
 
   // Speed presets. "max" sends a large finite multiplier (1e9); worker
   // still caps each tick to TICK_BUDGET_MS so the UI stays responsive.
@@ -372,6 +398,28 @@
       >
         sim error: {sim.error}
       </span>
+    {/if}
+    {#if worstNode && worstNodeLabel}
+      <Tooltip
+        content="Highest p99 of any node in the current snapshot. Click to select and inspect it."
+        side="bottom"
+      >
+        {#snippet children(id)}
+          <button
+            type="button"
+            onclick={() => selection.set(worstNode!.id)}
+            aria-label="Worst p99 node {worstNodeLabel} at {fmtMs(worstNode.p99)}"
+            aria-describedby={id}
+            class="flex items-center gap-1 rounded border border-warn/40 bg-warn/10 px-2 py-1
+                   text-[11px] text-warn transition-colors hover:border-warn
+                   focus-visible:border-warn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn"
+          >
+            <AlertTriangle class="h-3 w-3" aria-hidden="true" />
+            worst p99: <span class="text-ink">{worstNodeLabel}</span>
+            <span class="tabular-nums">{fmtMs(worstNode.p99)}</span>
+          </button>
+        {/snippet}
+      </Tooltip>
     {/if}
     {#if sim.snapshot}
       <div class="flex gap-3 text-muted">

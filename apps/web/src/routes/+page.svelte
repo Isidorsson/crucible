@@ -4,12 +4,12 @@
   import Inspector from '$lib/components/Inspector.svelte';
   import Canvas from '$lib/canvas/Canvas.svelte';
   import { design } from '$lib/stores/design.svelte';
+  import { selection } from '$lib/stores/selection.svelte';
   import { Flame } from '@lucide/svelte';
   import { SvelteFlowProvider } from '@xyflow/svelte';
 
-  let selectedId = $state<string | null>(null);
   const selected = $derived(
-    selectedId ? design.nodes.find((n) => n.id === selectedId) ?? null : null
+    selection.id ? design.nodes.find((n) => n.id === selection.id) ?? null : null
   );
 </script>
 
@@ -31,8 +31,8 @@
   <SvelteFlowProvider>
     <main class="flex flex-1 overflow-hidden" aria-label="Editor">
       <Palette />
-      <Canvas onSelect={(id) => (selectedId = id)} />
-      <Inspector {selected} onSelect={(id) => (selectedId = id)} />
+      <Canvas onSelect={(id) => selection.set(id)} />
+      <Inspector {selected} onSelect={(id) => selection.set(id)} />
     </main>
   </SvelteFlowProvider>
 </div>
