@@ -416,6 +416,59 @@ export const TEMPLATES: Template[] = [
     ]
   },
   {
+    id: 'social-feed',
+    label: 'Social Feed Fan-Out',
+    description:
+      'Twitter-style fan-out-on-write: tweet → kafka → per-user timeline caches. Live updates over WebSocket.',
+    icon: MessageCircle,
+    nodes: [
+      // clients
+      { kind: 'mobileClient', dx: 0, dy: 0, propsOverride: { rps: 300 } },
+      { kind: 'webClient', dx: 0, dy: ROW * 3, propsOverride: { rps: 100 } },
+      // edge
+      { kind: 'loadbalancer', dx: COL, dy: ROW * 1.5 },
+      { kind: 'apiGateway', dx: COL * 2, dy: ROW * 1.5, propsOverride: { capacity: 1000 } },
+      { kind: 'identityProvider', dx: COL * 3, dy: -ROW * 0.5 },
+      // write path
+      { kind: 'microservice', dx: COL * 3, dy: 0 }, // tweet-svc
+      { kind: 'postgres', dx: COL * 4, dy: 0 }, // tweets
+      { kind: 'kafka', dx: COL * 5, dy: ROW, propsOverride: { drainRPS: 5000 } },
+      { kind: 'worker', dx: COL * 6, dy: 0 }, // fan-out worker
+      { kind: 'worker', dx: COL * 6, dy: ROW }, // fan-out worker
+      { kind: 'redis', dx: COL * 7, dy: ROW * 0.5, propsOverride: { capacity: 20000 } }, // timeline cache
+      // read path
+      { kind: 'microservice', dx: COL * 3, dy: ROW * 2 }, // timeline-svc
+      // search tributary (CDC)
+      { kind: 'streamProcessor', dx: COL * 6, dy: ROW * 2 },
+      { kind: 'elasticsearch', dx: COL * 7, dy: ROW * 2 },
+      // realtime
+      { kind: 'websocketServer', dx: COL * 3, dy: ROW * 3 },
+      { kind: 'websocketServer', dx: COL * 3, dy: ROW * 4 }
+    ],
+    edges: [
+      { from: 0, to: 2 }, // mobile → lb
+      { from: 1, to: 2 }, // web → lb
+      { from: 2, to: 3 }, // lb → gw
+      { from: 3, to: 4 }, // gw → idp
+      { from: 3, to: 5 }, // gw → tweet-svc
+      { from: 5, to: 6 }, // tweet-svc → postgres
+      { from: 5, to: 7 }, // tweet-svc → kafka
+      { from: 7, to: 8 }, // kafka → worker
+      { from: 7, to: 9 }, // kafka → worker
+      { from: 8, to: 10 }, // worker → redis
+      { from: 9, to: 10 }, // worker → redis
+      { from: 3, to: 11 }, // gw → timeline-svc
+      { from: 11, to: 10 }, // timeline → redis
+      { from: 11, to: 6 }, // timeline → postgres (fallback)
+      { from: 7, to: 12 }, // kafka → stream (search CDC)
+      { from: 12, to: 13 }, // stream → elastic
+      { from: 2, to: 14 }, // lb → ws
+      { from: 2, to: 15 }, // lb → ws
+      { from: 14, to: 10 }, // ws → redis (live timeline)
+      { from: 15, to: 10 }
+    ]
+  },
+  {
     id: 'observability-pipeline',
     label: 'Observability Pipeline',
     description: 'Services → Kafka → stream processor → time-series DB + warehouse.',
