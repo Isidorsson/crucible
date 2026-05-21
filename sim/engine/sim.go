@@ -29,18 +29,41 @@ type Sim struct {
 	// current snapshot window. UI consumes + resets it on Snapshot() so
 	// edges pulse only while traffic actually flows. Bounded by edge count.
 	EdgeFlow map[edgeKey]uint32
+
+	// Partitions records edges the operator has severed via chaos. Any
+	// EvRequestArrive event whose (prevHop, dst) pair is in the set is
+	// dropped at dispatch and the in-flight request is failed. Modeled
+	// as a set (struct{} value) for O(1) membership.
+	Partitions map[edgeKey]struct{}
+
+	// FaultLog buffers chaos events between snapshots. Drained + reset by
+	// DrainFaultLog so the UI can render a timeline without us holding
+	// onto every event for the life of the sim.
+	FaultLog []FaultEvent
 }
 
 type edgeKey struct{ Src, Dst string }
 
+// FaultEvent is a single chaos toggle entry surfaced to the UI timeline.
+// Target identifies the affected resource: a node id, or an edge encoded
+// as "src->dst" when Kind == FaultPartition.
+type FaultEvent struct {
+	Time   int64     `json:"t"`
+	Target string    `json:"target"`
+	Kind   FaultKind `json:"kind"`
+	On     bool      `json:"on"`
+}
+
 func NewSim(seed uint64) *Sim {
 	return &Sim{
-		Heap:     NewEventHeap(4096),
-		RNG:      NewRNG(seed),
-		Nodes:    make(map[string]Node, 32),
-		Edges:    make(map[string][]string, 32),
-		Requests: make(map[uint64]*Request, 1024),
-		EdgeFlow: make(map[edgeKey]uint32, 64),
+		Heap:       NewEventHeap(4096),
+		RNG:        NewRNG(seed),
+		Nodes:      make(map[string]Node, 32),
+		Edges:      make(map[string][]string, 32),
+		Requests:   make(map[uint64]*Request, 1024),
+		EdgeFlow:   make(map[edgeKey]uint32, 64),
+		Partitions: make(map[edgeKey]struct{}, 8),
+		FaultLog:   make([]FaultEvent, 0, 32),
 	}
 }
 

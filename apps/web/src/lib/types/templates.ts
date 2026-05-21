@@ -14,6 +14,11 @@ import {
   Boxes,
   Inbox,
   Webhook,
+  Film,
+  MessageCircle,
+  ShoppingCart,
+  Globe2,
+  Car,
   type Icon as LucideIcon
 } from '@lucide/svelte';
 import type { NodeKind, NodeProps } from './topology';
@@ -360,6 +365,54 @@ export const TEMPLATES: Template[] = [
       { from: 3, to: 4 },
       { from: 4, to: 5 },
       { from: 3, to: 6 }
+    ]
+  },
+  {
+    id: 'video-streaming',
+    label: 'Video Streaming Platform',
+    description:
+      'Netflix-style: CDN-fronted playback, catalog, recs, IDP auth, and analytics fan-out to a warehouse.',
+    icon: Film,
+    nodes: [
+      // viewers
+      { kind: 'webClient', dx: 0, dy: 0, propsOverride: { rps: 200 } },
+      { kind: 'mobileClient', dx: 0, dy: ROW * 2, propsOverride: { rps: 400 } },
+      // edge
+      { kind: 'cdn', dx: COL, dy: ROW, propsOverride: { hitRate: 0.95, capacity: 20000 } },
+      { kind: 'loadbalancer', dx: COL * 2, dy: ROW },
+      { kind: 'apiGateway', dx: COL * 3, dy: ROW, propsOverride: { capacity: 800 } },
+      { kind: 'identityProvider', dx: COL * 4, dy: -ROW },
+      // services
+      { kind: 'microservice', dx: COL * 4, dy: 0 }, // catalog
+      { kind: 'microservice', dx: COL * 4, dy: ROW }, // playback
+      { kind: 'microservice', dx: COL * 4, dy: ROW * 2 }, // recommendations
+      // data
+      { kind: 'mongo', dx: COL * 5, dy: 0 },
+      { kind: 'redis', dx: COL * 5, dy: ROW },
+      { kind: 'blobStore', dx: COL * 6, dy: ROW, propsOverride: { capacity: 1000 } },
+      { kind: 'vectorDB', dx: COL * 5, dy: ROW * 2 },
+      // analytics tributary
+      { kind: 'kafka', dx: COL * 5, dy: ROW * 3, propsOverride: { drainRPS: 2000 } },
+      { kind: 'streamProcessor', dx: COL * 6, dy: ROW * 3 },
+      { kind: 'dataWarehouse', dx: COL * 7, dy: ROW * 3 }
+    ],
+    edges: [
+      { from: 0, to: 2 }, // web → cdn
+      { from: 1, to: 2 }, // mobile → cdn
+      { from: 2, to: 3 }, // cdn → lb
+      { from: 3, to: 4 }, // lb → gw
+      { from: 4, to: 5 }, // gw → idp
+      { from: 4, to: 6 }, // gw → catalog
+      { from: 4, to: 7 }, // gw → playback
+      { from: 4, to: 8 }, // gw → recs
+      { from: 6, to: 9 }, // catalog → mongo
+      { from: 7, to: 10 }, // playback → redis
+      { from: 7, to: 11 }, // playback → blob (manifest/chunk)
+      { from: 8, to: 12 }, // recs → vector
+      { from: 7, to: 13 }, // playback events → kafka
+      { from: 6, to: 13 }, // catalog events → kafka
+      { from: 13, to: 14 }, // kafka → stream
+      { from: 14, to: 15 } // stream → warehouse
     ]
   },
   {
