@@ -12,6 +12,8 @@ import {
   Activity,
   Search,
   Boxes,
+  Inbox,
+  Webhook,
   type Icon as LucideIcon
 } from '@lucide/svelte';
 import type { NodeKind, NodeProps } from './topology';
@@ -308,6 +310,56 @@ export const TEMPLATES: Template[] = [
       { from: 3, to: 4 },
       { from: 2, to: 5 },
       { from: 2, to: 6 }
+    ]
+  },
+  {
+    id: 'outbox-pattern',
+    label: 'Outbox Pattern',
+    description: 'Write DB + outbox in one txn → CDC → Kafka → consumers. Kills dual-write.',
+    icon: Inbox,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'appServer', dx: COL, dy: ROW },
+      { kind: 'postgres', dx: COL * 2, dy: ROW },
+      { kind: 'streamProcessor', dx: COL * 3, dy: ROW },
+      { kind: 'kafka', dx: COL * 4, dy: ROW },
+      { kind: 'worker', dx: COL * 5, dy: 0 },
+      { kind: 'worker', dx: COL * 5, dy: ROW * 2 },
+      { kind: 'elasticsearch', dx: COL * 6, dy: 0 },
+      { kind: 'thirdPartyAPI', dx: COL * 6, dy: ROW * 2 }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 },
+      { from: 4, to: 6 },
+      { from: 5, to: 7 },
+      { from: 6, to: 8 }
+    ]
+  },
+  {
+    id: 'webhook-delivery',
+    label: 'Webhook Delivery + DLQ',
+    description: 'Queue → worker → third-party API; failures land in dead-letter queue.',
+    icon: Webhook,
+    nodes: [
+      { kind: 'webClient', dx: 0, dy: ROW },
+      { kind: 'appServer', dx: COL, dy: ROW },
+      { kind: 'queue', dx: COL * 2, dy: ROW },
+      { kind: 'worker', dx: COL * 3, dy: ROW },
+      { kind: 'circuitBreaker', dx: COL * 4, dy: 0 },
+      { kind: 'thirdPartyAPI', dx: COL * 5, dy: 0 },
+      { kind: 'sqs', dx: COL * 4, dy: ROW * 2, propsOverride: { drainRPS: 5, max: 50_000 } }
+    ],
+    edges: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 },
+      { from: 3, to: 6 }
     ]
   },
   {
