@@ -31,9 +31,9 @@
     <span class="text-xs text-muted">system design simulator</span>
   </header>
 
-  <ControlBar />
-
   <SvelteFlowProvider>
+    <ControlBar />
+
     <main class="flex flex-1 overflow-hidden" aria-label="Editor">
       <Palette />
       <Canvas onSelect={(id) => selection.set(id)} />

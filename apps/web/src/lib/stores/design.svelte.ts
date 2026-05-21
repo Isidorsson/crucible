@@ -200,8 +200,16 @@ function createDesignStore() {
   function addEdge(source: string, target: string): string | null {
     if (source === target) return null;
     const existing = edges.find((e) => e.source === source && e.target === target);
+    // Annotation edges: if either endpoint is a sticky note the edge is a
+    // visual link, not a data path. We tag it 'note-link' so the renderer
+    // picks the dashed annotation style and the sim listener is skipped —
+    // the engine has no concept of notes.
+    const srcNode = nodes.find((n) => n.id === source);
+    const tgtNode = nodes.find((n) => n.id === target);
+    if (!srcNode || !tgtNode) return null;
+    const isAnnotation = srcNode.type === 'note' || tgtNode.type === 'note';
     if (existing) {
-      listener.onAddEdge?.(source, target);
+      if (!isAnnotation) listener.onAddEdge?.(source, target);
       return existing.id;
     }
     const id = `${source}->${target}-${nanoid(4)}`;
@@ -211,10 +219,11 @@ function createDesignStore() {
         id,
         source,
         target,
-        type: 'flow'
+        type: isAnnotation ? 'note-link' : 'flow',
+        selectable: true
       }
     ];
-    listener.onAddEdge?.(source, target);
+    if (!isAnnotation) listener.onAddEdge?.(source, target);
     return id;
   }
 
@@ -251,6 +260,10 @@ function createDesignStore() {
 
   function toSpec(): TopologySpec {
     const engineNodes = nodes.filter((n) => n.type === 'crucible') as Node<CrucibleNodeData>[];
+    // Annotation edges connect notes; the engine has no notes, so skip them
+    // before forwarding the spec. Without this the worker would crash on an
+    // unknown node id the moment the user links a note.
+    const engineEdges = edges.filter((e) => e.type !== 'note-link');
     return {
       seed,
       nodes: engineNodes.map((n) => ({
@@ -258,7 +271,7 @@ function createDesignStore() {
         kind: CATALOG_BY_KIND[n.data.kind].engineKind,
         props: n.data.props
       })),
-      edges: edges.map((e) => ({ src: e.source, dst: e.target }))
+      edges: engineEdges.map((e) => ({ src: e.source, dst: e.target }))
     };
   }
 
@@ -342,12 +355,6 @@ function createDesignStore() {
         }
       };
     });
-    const nextEdges: Edge[] = d.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      type: 'flow'
-    }));
     const nextNotes: Node<NoteData>[] = (d.notes ?? []).map((nt) => ({
       id: nt.id,
       type: 'note',
@@ -355,6 +362,16 @@ function createDesignStore() {
       width: nt.width,
       height: nt.height,
       data: { text: nt.text ?? '' }
+    }));
+    // Derive edge type from endpoints so an imported design's note links
+    // restore as dashed annotations rather than data paths. The serialized
+    // format doesn't carry an explicit type — endpoint identity is enough.
+    const noteIds = new Set(nextNotes.map((n) => n.id));
+    const nextEdges: Edge[] = d.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: noteIds.has(e.source) || noteIds.has(e.target) ? 'note-link' : 'flow'
     }));
     nodes = [...nextNodes, ...nextNotes];
     edges = nextEdges;

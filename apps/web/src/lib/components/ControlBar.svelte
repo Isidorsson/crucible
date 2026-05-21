@@ -11,9 +11,11 @@
     StickyNote
   } from '@lucide/svelte';
   import { sim } from '$lib/stores/sim.svelte';
-  import { design } from '$lib/stores/design.svelte';
+  import { design, isNote } from '$lib/stores/design.svelte';
+  import { selection } from '$lib/stores/selection.svelte';
   import type { NodeKind } from '$lib/types/topology';
   import { CATALOG_BY_KIND } from '$lib/types/catalog';
+  import { useSvelteFlow } from '@xyflow/svelte';
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
   import Scrubber from './Scrubber.svelte';
@@ -22,6 +24,41 @@
   import { GLOSSARY } from './glossary';
 
   let exportOpen = $state(false);
+
+  const { screenToFlowPosition } = useSvelteFlow();
+
+  // Notes default to the visible viewport center so they appear where the
+  // user is actually looking, not at flow-origin (off-screen once the user
+  // pans). A small jitter prevents repeated Add-note clicks from stacking
+  // notes at identical coordinates. If a node is selected, anchor the new
+  // note just above-right of it instead so it visibly annotates the choice.
+  const NOTE_W = 200;
+  const NOTE_H = 100;
+  function addNoteAtSmartPosition() {
+    const sel = selection.id
+      ? design.nodes.find((n) => n.id === selection.id) ?? null
+      : null;
+    if (sel && !isNote(sel)) {
+      design.addNote({
+        x: sel.position.x + 220,
+        y: sel.position.y - 24
+      });
+      return;
+    }
+    const canvas = document.getElementById('canvas');
+    if (!canvas) {
+      design.addNote({ x: 240, y: 160 });
+      return;
+    }
+    const r = canvas.getBoundingClientRect();
+    const jitterX = (Math.random() - 0.5) * 40;
+    const jitterY = (Math.random() - 0.5) * 40;
+    const pos = screenToFlowPosition({
+      x: r.left + r.width / 2 + jitterX,
+      y: r.top + r.height / 2 + jitterY
+    });
+    design.addNote({ x: pos.x - NOTE_W / 2, y: pos.y - NOTE_H / 2 });
+  }
 
   // Speed presets. "max" sends a large finite multiplier (1e9); worker
   // still caps each tick to TICK_BUDGET_MS so the UI stays responsive.
@@ -309,11 +346,14 @@
     {/snippet}
   </Tooltip>
 
-  <Tooltip content="Drop a sticky note at the canvas center to document this design." side="bottom">
+  <Tooltip
+    content="Drop a sticky note in the viewport. With a node selected, the note lands beside it so you can link them."
+    side="bottom"
+  >
     {#snippet children(id)}
       <button
         type="button"
-        onclick={() => design.addNote({ x: 240, y: 160 })}
+        onclick={addNoteAtSmartPosition}
         aria-label="Add sticky note"
         aria-describedby={id}
         class="flex items-center gap-1.5 rounded border border-line bg-bg px-2.5 py-1.5

@@ -16,6 +16,7 @@
   import CrucibleNode from '$lib/components/nodes/CrucibleNode.svelte';
   import NoteNode from '$lib/components/nodes/NoteNode.svelte';
   import FlowEdge from './FlowEdge.svelte';
+  import NoteLinkEdge from './NoteLinkEdge.svelte';
   import ContextMenu, { type CtxTarget } from './ContextMenu.svelte';
   import ConnectPopover from './ConnectPopover.svelte';
   import { design } from '$lib/stores/design.svelte';
@@ -25,7 +26,10 @@
     crucible: CrucibleNode as never,
     note: NoteNode as never
   };
-  const edgeTypes: EdgeTypes = { flow: FlowEdge as never };
+  const edgeTypes: EdgeTypes = {
+    flow: FlowEdge as never,
+    'note-link': NoteLinkEdge as never
+  };
 
   let { onSelect }: { onSelect: (id: string | null) => void } = $props();
 
