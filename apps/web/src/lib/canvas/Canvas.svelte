@@ -184,7 +184,18 @@
   >
     <Background gap={24} />
     <Controls showLock={false} />
-    <MiniMap pannable zoomable />
+    <MiniMap
+      pannable
+      zoomable
+      bgColor="rgba(19, 23, 28, 0.7)"
+      maskColor="rgba(11, 13, 16, 0.6)"
+      maskStrokeColor="#58a6ff"
+      maskStrokeWidth={3}
+      nodeColor="#1f262f"
+      nodeStrokeColor="#58a6ff"
+      nodeBorderRadius={2}
+      nodeStrokeWidth={1}
+    />
   </SvelteFlow>
 
   {#if ctx}

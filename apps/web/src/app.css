@@ -68,6 +68,75 @@
   --xy-edge-stroke-selected: #58a6ff;
   --xy-handle-background-color: #58a6ff;
   --xy-handle-border-color: #0b0d10;
+  /* Neutralize the library's white chrome defaults; we restyle below. */
+  --xy-controls-button-background-color-default: transparent;
+  --xy-controls-button-background-color-hover-default: rgba(88, 166, 255, 0.12);
+  --xy-controls-button-color-default: #e6edf3;
+  --xy-controls-button-color-hover-default: #58a6ff;
+  --xy-controls-button-border-color-default: transparent;
+  --xy-minimap-background-color-default: transparent;
+}
+
+/* ── Canvas HUD: Controls + MiniMap ────────────────────────────────
+   Match StatusBar's terminal-HUD look: hairline border, translucent
+   panel, mono accent on hover. Backdrop blur so the dot grid reads
+   faintly through the chrome instead of feeling pasted on top.
+   Selectors are prefixed with `.svelte-flow` to outrank the library
+   stylesheet, which Vite injects after our app.css. */
+.svelte-flow .svelte-flow__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px;
+  background: rgba(19, 23, 28, 0.72);
+  border: 1px solid theme('colors.line');
+  border-radius: 6px;
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+.svelte-flow .svelte-flow__controls-button {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 0;
+  border-bottom: 0;
+  border-radius: 4px;
+  color: theme('colors.ink');
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.svelte-flow .svelte-flow__controls-button:hover {
+  background: rgba(88, 166, 255, 0.12);
+  color: theme('colors.accent');
+}
+.svelte-flow .svelte-flow__controls-button:active {
+  background: rgba(88, 166, 255, 0.2);
+}
+.svelte-flow .svelte-flow__controls-button:focus-visible {
+  outline: 2px solid theme('colors.accent');
+  outline-offset: -2px;
+}
+.svelte-flow .svelte-flow__controls-button svg {
+  width: 12px;
+  height: 12px;
+  max-width: 12px;
+  max-height: 12px;
+  fill: currentColor;
+}
+.svelte-flow .svelte-flow__controls-button:disabled {
+  opacity: 0.4;
+  color: theme('colors.muted');
+}
+
+.svelte-flow .svelte-flow__minimap {
+  background: rgba(19, 23, 28, 0.72);
+  border: 1px solid theme('colors.line');
+  border-radius: 6px;
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  overflow: hidden;
 }
 
 /* ── Shared form-field shell ─────────────────────────────────────────
