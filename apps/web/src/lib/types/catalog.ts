@@ -35,6 +35,9 @@ import {
   BrainCircuit,
   Activity,
   Warehouse,
+  ExternalLink,
+  Repeat,
+  KeyRound,
   type Icon as LucideIcon
 } from '@lucide/svelte';
 import type { EngineKind, NodeCategory, NodeKind, NodeProps } from './topology';
@@ -109,9 +112,12 @@ const D = {
   func: { capacity: 200, queueLimit: 1000, meanNs: 100_000_000, stdNs: 30_000_000 },
   worker: { capacity: 20, queueLimit: 5000, meanNs: 50_000_000, stdNs: 20_000_000 },
   authSvc: { capacity: 200, queueLimit: 1000, meanNs: 1_000_000, stdNs: 500_000 },
+  idp: { capacity: 100, queueLimit: 500, meanNs: 50_000_000, stdNs: 20_000_000 },
   ws: { capacity: 5000, queueLimit: 1000, meanNs: 2_000_000, stdNs: 800_000 },
   stream: { capacity: 100, queueLimit: 10000, meanNs: 5_000_000, stdNs: 2_000_000 },
   mlSvc: { capacity: 8, queueLimit: 200, meanNs: 80_000_000, stdNs: 40_000_000 },
+  workflow: { capacity: 50, queueLimit: 5000, meanNs: 50_000_000, stdNs: 30_000_000 },
+  thirdParty: { capacity: 30, queueLimit: 200, meanNs: 200_000_000, stdNs: 100_000_000 },
   cache: { hitRate: 0.8, capacity: 1000 },
   redis: { hitRate: 0.92, capacity: 5000 },
   memcached: { hitRate: 0.88, capacity: 5000 },
@@ -350,6 +356,17 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
     defaults: D.authSvc
   },
   {
+    kind: 'identityProvider',
+    engineKind: 'service',
+    category: 'edge',
+    label: 'Identity Provider',
+    icon: KeyRound,
+    description: 'External IDP (Okta, Auth0, Clerk) — login & token issuance.',
+    details:
+      'External identity provider that owns the login flow and issues tokens (OAuth/OIDC). Unlike an internal Auth Service, you do not control its SLA — an IDP outage blocks new logins entirely. Cache validated tokens locally so existing sessions survive provider blips.',
+    defaults: D.idp
+  },
+  {
     kind: 'websocketServer',
     engineKind: 'service',
     category: 'compute',
@@ -381,6 +398,28 @@ export const NODE_CATALOG: NodeCatalogEntry[] = [
     details:
       'Serves predictions from a trained model (Triton, TorchServe, vLLM, SageMaker). GPU-bound, low effective capacity, fat tail on latency. Batch requests where possible — per-call overhead dominates throughput.',
     defaults: D.mlSvc
+  },
+  {
+    kind: 'workflowEngine',
+    engineKind: 'service',
+    category: 'compute',
+    label: 'Workflow Engine',
+    icon: Repeat,
+    description: 'Temporal / Step Functions — durable orchestration.',
+    details:
+      'Runs long-lived, durable workflows that survive process restarts (Temporal, AWS Step Functions, Cadence). Use for sagas, multi-step processes with compensation, and anything that takes longer than one request. Each step is checkpointed, so retries are exactly-once at the activity boundary.',
+    defaults: D.workflow
+  },
+  {
+    kind: 'thirdPartyAPI',
+    engineKind: 'service',
+    category: 'compute',
+    label: 'Third-Party API',
+    icon: ExternalLink,
+    description: 'External SaaS dependency — Stripe, Twilio, SendGrid.',
+    details:
+      'A service you depend on but do not run (payments, SMS, email, geocoding). Latency is variable and outside your control — typical p99 is hundreds of milliseconds, occasionally much worse. Model it explicitly so the blast radius of "their" outage on "your" stack is visible. Always wrap with retry + circuit breaker.',
+    defaults: D.thirdParty
   },
 
   // ── caching ──────────────────────────────────────────────────────────
@@ -1025,6 +1064,43 @@ const META: Partial<Record<NodeKind, ExtraMeta>> = {
     whenNotToUse: 'For per-request signature checks that can be done locally (JWT verify).',
     pairsWith: ['apiGateway', 'redis', 'rateLimiter']
   },
+  identityProvider: {
+    acronym: 'IDP (Okta / Auth0 / Clerk / Cognito)',
+    realWorldRange: 'Login ~100–500ms; token verify ~10–50ms; provider SLA ~99.9%.',
+    scaling: 'Provider-managed; you pay for MAU + login throughput.',
+    failureModes: [
+      'Provider outage blocks all new logins immediately.',
+      'JWKS endpoint slowness stalls token verification across the fleet.',
+      'OAuth redirect domain change breaks every client without warning.',
+      'Free-tier rate limits surprise teams at launch.'
+    ],
+    whenNotToUse: 'For internal service-to-service auth — mTLS or short-lived JWTs are cheaper.',
+    pairsWith: ['apiGateway', 'authService', 'redis']
+  },
+  workflowEngine: {
+    realWorldRange: '10–1000 workflows started/sec; per-workflow runtime seconds to days.',
+    scaling: 'Horizontal workers per task queue; sharded history store underneath.',
+    failureModes: [
+      'Non-deterministic workflow code corrupts replay after a version bump.',
+      'Activity timeouts tuned too tight cause infinite retries.',
+      'History grows unbounded on long-running workflows — must continue-as-new.',
+      'Backing DB (Cassandra/Postgres) becomes the bottleneck under load.'
+    ],
+    whenNotToUse: 'For sub-second request work — orchestration overhead dwarfs the task.',
+    pairsWith: ['microservice', 'queue', 'thirdPartyAPI']
+  },
+  thirdPartyAPI: {
+    realWorldRange: 'p50 50–300ms; p99 500ms–5s; SLA usually 99.9%, sometimes worse.',
+    scaling: 'Outside your control — quotas, rate limits, and per-account caps apply.',
+    failureModes: [
+      'Provider rate-limits you under burst (429s).',
+      'Region outage cascades into your request path.',
+      'API deprecation window ends; old calls 410.',
+      'Latency spikes mid-day with no warning or status page.'
+    ],
+    whenNotToUse: 'For latency-critical inline paths — push behind a queue + worker if possible.',
+    pairsWith: ['circuitBreaker', 'queue', 'workflowEngine']
+  },
   websocketServer: {
     realWorldRange: '10k–1M concurrent connections per node; per-msg p99 ~2–20ms.',
     scaling: 'Horizontal; sticky load balancing or pub/sub fan-out across nodes.',
@@ -1135,9 +1211,12 @@ const COST_SLO: Partial<Record<NodeKind, { costPerMonth?: number; sloP99Ms?: num
   function: { costPerMonth: 20, sloP99Ms: 1000 },
   worker: { costPerMonth: 80 },
   authService: { costPerMonth: 80, sloP99Ms: 50 },
+  identityProvider: { costPerMonth: 200, sloP99Ms: 500 },
   websocketServer: { costPerMonth: 120, sloP99Ms: 50 },
   streamProcessor: { costPerMonth: 300 },
   mlModelServer: { costPerMonth: 1500, sloP99Ms: 1000 },
+  workflowEngine: { costPerMonth: 400 },
+  thirdPartyAPI: { costPerMonth: 0, sloP99Ms: 2000 },
   // caching
   cache: { costPerMonth: 80, sloP99Ms: 5 },
   redis: { costPerMonth: 80, sloP99Ms: 5 },

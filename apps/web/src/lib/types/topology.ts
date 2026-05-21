@@ -26,9 +26,12 @@ export type NodeKind =
   | 'function'
   | 'worker'
   | 'authService'
+  | 'identityProvider'
   | 'websocketServer'
   | 'streamProcessor'
   | 'mlModelServer'
+  | 'workflowEngine'
+  | 'thirdPartyAPI'
   // caching
   | 'cache'
   | 'redis'
