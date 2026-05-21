@@ -469,6 +469,61 @@ export const TEMPLATES: Template[] = [
     ]
   },
   {
+    id: 'ecom-checkout',
+    label: 'E-commerce Checkout',
+    description:
+      'Cart, inventory, pricing → workflow → Stripe + email/SMS. Saga over a third-party payment API.',
+    icon: ShoppingCart,
+    nodes: [
+      // shoppers
+      { kind: 'webClient', dx: 0, dy: 0, propsOverride: { rps: 150 } },
+      { kind: 'mobileClient', dx: 0, dy: ROW * 2, propsOverride: { rps: 250 } },
+      // edge
+      { kind: 'cdn', dx: COL, dy: ROW },
+      { kind: 'apiGateway', dx: COL * 2, dy: ROW },
+      { kind: 'identityProvider', dx: COL * 3, dy: -ROW * 0.5 },
+      // services
+      { kind: 'microservice', dx: COL * 3, dy: 0 }, // cart
+      { kind: 'microservice', dx: COL * 3, dy: ROW }, // pricing
+      { kind: 'microservice', dx: COL * 3, dy: ROW * 2 }, // inventory
+      { kind: 'microservice', dx: COL * 3, dy: ROW * 3 }, // checkout entry
+      // data
+      { kind: 'redis', dx: COL * 4, dy: 0 }, // cart cache
+      { kind: 'postgres', dx: COL * 5, dy: 0 }, // cart durable
+      { kind: 'redis', dx: COL * 4, dy: ROW }, // pricing cache
+      { kind: 'postgres', dx: COL * 4, dy: ROW * 2 }, // inventory
+      // saga
+      { kind: 'workflowEngine', dx: COL * 4, dy: ROW * 3 },
+      { kind: 'thirdPartyAPI', dx: COL * 5, dy: ROW * 3 }, // Stripe
+      { kind: 'postgres', dx: COL * 5, dy: ROW * 4 }, // orders
+      // notifications
+      { kind: 'kafka', dx: COL * 6, dy: ROW * 3 },
+      { kind: 'worker', dx: COL * 7, dy: ROW * 3 },
+      { kind: 'thirdPartyAPI', dx: COL * 8, dy: ROW * 3 } // email/SMS
+    ],
+    edges: [
+      { from: 0, to: 2 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 }, // cdn → gw
+      { from: 3, to: 4 }, // gw → idp
+      { from: 3, to: 5 }, // gw → cart
+      { from: 3, to: 6 }, // gw → pricing
+      { from: 3, to: 7 }, // gw → inventory
+      { from: 3, to: 8 }, // gw → checkout
+      { from: 5, to: 9 }, // cart → redis
+      { from: 9, to: 10 }, // redis miss → postgres
+      { from: 6, to: 11 }, // pricing → redis
+      { from: 7, to: 12 }, // inventory → postgres
+      { from: 8, to: 13 }, // checkout → workflow
+      { from: 13, to: 14 }, // workflow → Stripe
+      { from: 13, to: 12 }, // workflow → inventory reserve
+      { from: 13, to: 15 }, // workflow → orders DB
+      { from: 13, to: 16 }, // workflow → kafka (events)
+      { from: 16, to: 17 }, // kafka → worker
+      { from: 17, to: 18 } // worker → email/SMS API
+    ]
+  },
+  {
     id: 'observability-pipeline',
     label: 'Observability Pipeline',
     description: 'Services → Kafka → stream processor → time-series DB + warehouse.',
