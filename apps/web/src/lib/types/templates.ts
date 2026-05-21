@@ -524,6 +524,59 @@ export const TEMPLATES: Template[] = [
     ]
   },
   {
+    id: 'multi-region',
+    label: 'Multi-Region Active-Active',
+    description:
+      'Geo-DNS splits traffic across two full stacks; kafka mirrors writes between regions.',
+    icon: Globe2,
+    nodes: [
+      // global entry
+      { kind: 'webClient', dx: 0, dy: ROW * 2, propsOverride: { rps: 500 } },
+      { kind: 'dns', dx: COL, dy: ROW * 2 },
+      { kind: 'cdn', dx: COL * 2, dy: ROW * 2 },
+      // ── US region ──────────────────────────────────────────────
+      { kind: 'loadbalancer', dx: COL * 3, dy: 0 },
+      { kind: 'apiGateway', dx: COL * 4, dy: 0 },
+      { kind: 'appServer', dx: COL * 5, dy: 0 },
+      { kind: 'redis', dx: COL * 6, dy: -ROW * 0.5 },
+      { kind: 'postgres', dx: COL * 6, dy: ROW * 0.5 },
+      // ── EU region ──────────────────────────────────────────────
+      { kind: 'loadbalancer', dx: COL * 3, dy: ROW * 4 },
+      { kind: 'apiGateway', dx: COL * 4, dy: ROW * 4 },
+      { kind: 'appServer', dx: COL * 5, dy: ROW * 4 },
+      { kind: 'redis', dx: COL * 6, dy: ROW * 3.5 },
+      { kind: 'postgres', dx: COL * 6, dy: ROW * 4.5 },
+      // ── cross-region replication ───────────────────────────────
+      { kind: 'kafka', dx: COL * 7, dy: ROW * 2, propsOverride: { drainRPS: 3000 } },
+      { kind: 'streamProcessor', dx: COL * 8, dy: ROW * 1 },
+      { kind: 'streamProcessor', dx: COL * 8, dy: ROW * 3 }
+    ],
+    edges: [
+      { from: 0, to: 1 }, // client → dns
+      { from: 1, to: 2 }, // dns → cdn
+      // US fan
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 },
+      { from: 5, to: 6 },
+      { from: 5, to: 7 },
+      // EU fan
+      { from: 2, to: 8 },
+      { from: 8, to: 9 },
+      { from: 9, to: 10 },
+      { from: 10, to: 11 },
+      { from: 10, to: 12 },
+      // CDC out of each region into shared kafka
+      { from: 7, to: 13 },
+      { from: 12, to: 13 },
+      // stream consumers apply remote writes to opposite region
+      { from: 13, to: 14 },
+      { from: 13, to: 15 },
+      { from: 14, to: 12 }, // US writes → EU postgres
+      { from: 15, to: 7 } // EU writes → US postgres
+    ]
+  },
+  {
     id: 'observability-pipeline',
     label: 'Observability Pipeline',
     description: 'Services → Kafka → stream processor → time-series DB + warehouse.',
