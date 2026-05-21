@@ -124,6 +124,18 @@ func (s *Sim) dispatch(ev Event) {
 			return
 		}
 		prev := req.CurrentID
+		// Partition check happens before Hop so the request still
+		// shows its last-seen node in failure-trace tooling. The hop
+		// across the severed link never occurred.
+		if prev != "" && prev != ev.NodeID {
+			if _, severed := s.Partitions[edgeKey{Src: prev, Dst: ev.NodeID}]; severed {
+				s.FailReq(req, "link partitioned")
+				if src, ok := s.Nodes[prev]; ok {
+					src.RecordUpstreamError()
+				}
+				return
+			}
+		}
 		req.Hop(ev.NodeID)
 		if prev != "" && prev != ev.NodeID {
 			s.EdgeFlow[edgeKey{Src: prev, Dst: ev.NodeID}]++
@@ -187,5 +199,76 @@ func (s *Sim) FailReq(req *Request, reason string) {
 func (s *Sim) DrainEdgeFlow() map[edgeKey]uint32 {
 	out := s.EdgeFlow
 	s.EdgeFlow = make(map[edgeKey]uint32, len(out))
+	return out
+}
+
+// FaultKind value reserved for edge partitioning. Distinct from the
+// per-node kinds so the UI can render edges differently and the dispatch
+// path doesn't conflate "the node is dead" with "the link is severed".
+const FaultPartition FaultKind = 100
+
+// SetPartition adds or removes a (src,dst) entry. Returns the prior state
+// so callers can no-op when the toggle is redundant (and skip emitting a
+// duplicate log entry).
+func (s *Sim) SetPartition(src, dst string, on bool) (changed bool) {
+	k := edgeKey{Src: src, Dst: dst}
+	_, was := s.Partitions[k]
+	if on == was {
+		return false
+	}
+	if on {
+		s.Partitions[k] = struct{}{}
+	} else {
+		delete(s.Partitions, k)
+	}
+	return true
+}
+
+// PartitionPair is the exported form of a severed (src,dst) edge for the
+// snapshot path. The internal edgeKey stays unexported so callers can't
+// reach into Sim.Partitions and mutate the set without going through
+// SetPartition.
+type PartitionPair struct {
+	Src string `json:"src"`
+	Dst string `json:"dst"`
+}
+
+// PartitionList returns the current set as a slice for snapshot emission.
+// Allocation is tiny (partitions count, not edge count).
+func (s *Sim) PartitionList() []PartitionPair {
+	out := make([]PartitionPair, 0, len(s.Partitions))
+	for k := range s.Partitions {
+		out = append(out, PartitionPair{Src: k.Src, Dst: k.Dst})
+	}
+	return out
+}
+
+// LogFault appends a chaos event to the timeline buffer. The buffer is
+// drained on Snapshot, so the cap here is just a safety against runaway
+// growth between drains (32 frames worth at most).
+const maxFaultLogBuffer = 256
+
+func (s *Sim) LogFault(target string, kind FaultKind, on bool) {
+	if len(s.FaultLog) >= maxFaultLogBuffer {
+		// Drop the oldest entry rather than allocating without bound.
+		// The store-side ring is the source of truth for what the UI
+		// shows; we just need to not balloon between drains.
+		s.FaultLog = s.FaultLog[1:]
+	}
+	s.FaultLog = append(s.FaultLog, FaultEvent{
+		Time: s.Now, Target: target, Kind: kind, On: on,
+	})
+}
+
+// DrainFaultLog returns and resets the timeline buffer. UI accumulates
+// the deltas into its own bounded ring. Returns an empty (non-nil) slice
+// when the buffer is empty so the JSON encoder emits [] instead of null
+// — the worker-side type stays `FaultEvent[]` either way.
+func (s *Sim) DrainFaultLog() []FaultEvent {
+	if len(s.FaultLog) == 0 {
+		return []FaultEvent{}
+	}
+	out := s.FaultLog
+	s.FaultLog = make([]FaultEvent, 0, 32)
 	return out
 }

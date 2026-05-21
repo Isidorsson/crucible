@@ -8,6 +8,7 @@
   import Tooltip from './Tooltip.svelte';
   import Hint from './Hint.svelte';
   import LintPanel from './LintPanel.svelte';
+  import ChaosTimeline from './ChaosTimeline.svelte';
   import Shortcuts from './Shortcuts.svelte';
 
   // Worst-p99 node mirrors the prior ControlBar logic: skip dormant nodes
@@ -53,6 +54,7 @@
   aria-label="Simulation telemetry"
 >
   <LintPanel />
+  <ChaosTimeline />
   <Shortcuts />
 
   <div class="ml-auto flex items-center gap-3" aria-live="polite" aria-atomic="false">

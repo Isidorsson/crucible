@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Trash2, Copy, Skull, Snail, ShieldOff } from '@lucide/svelte';
+  import { Trash2, Copy, Skull, Snail, ShieldOff, Scissors, Link2 } from '@lucide/svelte';
   import { design } from '$lib/stores/design.svelte';
   import { sim } from '$lib/stores/sim.svelte';
   import { FaultKill, FaultSlow, FaultPacketLoss } from '$lib/types/topology';
@@ -62,6 +62,23 @@
   function clearFault() {
     if (target.kind !== 'node') return;
     sim.injectFault(target.id, 0, false);
+    close();
+  }
+
+  // Edge target → look up the underlying design edge so we can address the
+  // partition by (src,dst). Note-link edges are skipped — the engine has no
+  // notion of them, so partitioning would be a no-op on the sim side.
+  const edge = $derived(
+    target.kind === 'edge' ? design.edges.find((e) => e.id === target.id) : null
+  );
+  const isFlowEdge = $derived(edge?.type !== 'note-link');
+  const edgePartitioned = $derived(
+    !!edge && isFlowEdge && sim.isEdgePartitioned(edge.source, edge.target)
+  );
+
+  function partition(on: boolean) {
+    if (!edge || !isFlowEdge) return;
+    sim.partitionEdge(edge.source, edge.target, on);
     close();
   }
 
@@ -128,6 +145,29 @@
       Clear fault
     </button>
 
+    <div class="my-1 border-t border-line" aria-hidden="true"></div>
+  {/if}
+
+  {#if target.kind === 'edge' && edge && isFlowEdge}
+    {#if edgePartitioned}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() => partition(false)}
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-ok hover:bg-bg"
+      >
+        <Link2 class="h-3.5 w-3.5" aria-hidden="true" /> Restore link
+      </button>
+    {:else}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() => partition(true)}
+        class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-err hover:bg-bg"
+      >
+        <Scissors class="h-3.5 w-3.5" aria-hidden="true" /> Partition link
+      </button>
+    {/if}
     <div class="my-1 border-t border-line" aria-hidden="true"></div>
   {/if}
 

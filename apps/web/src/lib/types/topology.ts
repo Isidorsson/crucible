@@ -66,11 +66,15 @@ export type NodeCategory =
 
 export type LBStrategy = 'roundRobin' | 'leastInFlight' | 'random';
 
-export type FaultKind = 0 | 1 | 2 | 3;
+// Per-node fault kinds (0..3) and the special-cased edge partition value
+// (100) defined in engine/sim.go. Kept as a plain number union so JSON
+// from the worker round-trips without a runtime narrow.
+export type FaultKind = 0 | 1 | 2 | 3 | 100;
 export const FaultNone: FaultKind = 0;
 export const FaultKill: FaultKind = 1;
 export const FaultSlow: FaultKind = 2;
 export const FaultPacketLoss: FaultKind = 3;
+export const FaultPartition: FaultKind = 100;
 
 export interface NodeProps {
   rps?: number;
@@ -118,6 +122,21 @@ export interface EdgeFlow {
   count: number;
 }
 
+export interface PartitionPair {
+  src: string;
+  dst: string;
+}
+
+// One chaos toggle entry. `target` is a node id when `kind` is a per-node
+// fault, and the `"src->dst"` form when `kind === FaultPartition`. Matches
+// the JSON shape produced by engine.FaultEvent.
+export interface FaultEvent {
+  t: number;
+  target: string;
+  kind: FaultKind;
+  on: boolean;
+}
+
 export interface SimSnapshot {
   now: number;
   born: number;
@@ -126,4 +145,6 @@ export interface SimSnapshot {
   inFlight: number;
   nodes: NodeMetrics[];
   edges: EdgeFlow[];
+  partitions: PartitionPair[];
+  faultLog: FaultEvent[];
 }

@@ -13,6 +13,7 @@ type InMsg =
   | { type: 'setSpeed'; value: number }
   | { type: 'setRPS'; nodeId: string; rps: number }
   | { type: 'injectFault'; nodeId: string; kind: FaultKind; on: boolean }
+  | { type: 'partitionEdge'; src: string; dst: string; on: boolean }
   | { type: 'addNode'; node: { id: string; kind: string; props: Record<string, unknown> } }
   | { type: 'addEdge'; src: string; dst: string };
 
@@ -191,6 +192,10 @@ self.onmessage = async (ev: MessageEvent<InMsg>) => {
       case 'injectFault':
         if (!loaded) return;
         crucible.injectFault(msg.nodeId, msg.kind, msg.on);
+        return;
+      case 'partitionEdge':
+        if (!loaded) return;
+        crucible.partitionEdge(msg.src, msg.dst, msg.on);
         return;
       case 'addNode': {
         if (!loaded) return;

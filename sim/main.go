@@ -25,15 +25,16 @@ var (
 
 func main() {
 	js.Global().Set("crucible", js.ValueOf(map[string]any{
-		"load":        js.FuncOf(jsLoad),
-		"step":        js.FuncOf(jsStep),
-		"snapshot":    js.FuncOf(jsSnapshot),
-		"setSpeed":    js.FuncOf(jsSetSpeed),
-		"setRPS":      js.FuncOf(jsSetRPS),
-		"injectFault": js.FuncOf(jsInjectFault),
-		"reset":       js.FuncOf(jsReset),
-		"addNode":     js.FuncOf(jsAddNode),
-		"addEdge":     js.FuncOf(jsAddEdge),
+		"load":          js.FuncOf(jsLoad),
+		"step":          js.FuncOf(jsStep),
+		"snapshot":      js.FuncOf(jsSnapshot),
+		"setSpeed":      js.FuncOf(jsSetSpeed),
+		"setRPS":        js.FuncOf(jsSetRPS),
+		"injectFault":   js.FuncOf(jsInjectFault),
+		"partitionEdge": js.FuncOf(jsPartitionEdge),
+		"reset":         js.FuncOf(jsReset),
+		"addNode":       js.FuncOf(jsAddNode),
+		"addEdge":       js.FuncOf(jsAddEdge),
 	}))
 	select {} // keep WASM alive
 }
@@ -97,13 +98,15 @@ func jsSnapshot(this js.Value, args []js.Value) any {
 		edgesOut = append(edgesOut, edgeFlowJSON{Src: k.Src, Dst: k.Dst, Count: v})
 	}
 	payload := map[string]any{
-		"now":       sim.Now,
-		"born":      sim.Born,
-		"completed": sim.Completed,
-		"failed":    sim.Failed,
-		"inFlight":  len(sim.Requests),
-		"nodes":     nodesOut,
-		"edges":     edgesOut,
+		"now":        sim.Now,
+		"born":       sim.Born,
+		"completed":  sim.Completed,
+		"failed":     sim.Failed,
+		"inFlight":   len(sim.Requests),
+		"nodes":      nodesOut,
+		"edges":      edgesOut,
+		"partitions": sim.PartitionList(),
+		"faultLog":   sim.DrainFaultLog(),
 	}
 	b, _ := json.Marshal(payload)
 	return js.ValueOf(string(b))
@@ -137,6 +140,24 @@ func jsInjectFault(this js.Value, args []js.Value) any {
 	kind := engine.FaultKind(args[1].Int())
 	on := args[2].Bool()
 	ok := chaos.Inject(sim, id, kind, on)
+	return js.ValueOf(ok)
+}
+
+// jsPartitionEdge severs or restores a directed edge. Mirrors
+// jsInjectFault's shape so the worker can fire-and-forget a toggle.
+//
+// args[0]: src id, args[1]: dst id, args[2]: on (bool)
+func jsPartitionEdge(this js.Value, args []js.Value) any {
+	if sim == nil {
+		return errVal("no sim")
+	}
+	if len(args) < 3 {
+		return errVal("missing src/dst/on")
+	}
+	src := args[0].String()
+	dst := args[1].String()
+	on := args[2].Bool()
+	ok := chaos.Partition(sim, src, dst, on)
 	return js.ValueOf(ok)
 }
 

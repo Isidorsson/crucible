@@ -3,7 +3,8 @@ import type {
   NodeMetrics,
   FaultKind,
   EdgeFlow,
-  NodeDef
+  NodeDef,
+  FaultEvent
 } from '$lib/types/topology';
 import { design, setMutationListener } from './design.svelte';
 
@@ -57,6 +58,17 @@ function createSimStore() {
   // Auto-clear timers keyed by node id. Cleared on stop() and whenever
   // a new fault is injected on the same node.
   const faultTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  // Edge partitions are sim-side authoritative (the snapshot reports the
+  // current set), but mirroring the latest into a Record gives the UI an
+  // O(1) lookup that doesn't have to scan an array on every edge render.
+  let partitionedEdgeKeys = $state<Record<string, true>>({});
+
+  // Bounded ring of fault log entries the worker has surfaced since the
+  // sim started. UI timeline reads this directly. 200 entries ≈ a couple
+  // of minutes of active chaos — older events drop off the front.
+  const FAULT_LOG_CAP = 200;
+  let faultLog = $state<FaultEvent[]>([]);
 
   let worker: Worker | null = null;
   // Sim-time of the previous snapshot. Edge counts are accumulated in sim
@@ -137,6 +149,22 @@ function createSimStore() {
           nextEdgeHist[k] = pushSample(edgeHistory[k] ?? [], next[k]);
         }
         edgeHistory = nextEdgeHist;
+
+        // Replace partition snapshot wholesale — the engine is authoritative.
+        // Empty/missing array clears the map (e.g. after reset).
+        const nextPart: Record<string, true> = {};
+        for (const p of m.payload.partitions ?? []) nextPart[`${p.src}->${p.dst}`] = true;
+        partitionedEdgeKeys = nextPart;
+
+        // Append the delta. Older entries fall off the front when we
+        // exceed FAULT_LOG_CAP so memory stays bounded across long runs.
+        const delta = m.payload.faultLog ?? [];
+        if (delta.length > 0) {
+          const merged = faultLog.concat(delta);
+          faultLog = merged.length > FAULT_LOG_CAP
+            ? merged.slice(merged.length - FAULT_LOG_CAP)
+            : merged;
+        }
       } else if (m.type === 'error' && typeof m.payload === 'string') {
         error = m.payload;
         state = 'idle';
@@ -185,6 +213,8 @@ function createSimStore() {
     for (const t of faultTimers.values()) clearTimeout(t);
     faultTimers.clear();
     activeFaultByNode = {};
+    partitionedEdgeKeys = {};
+    faultLog = [];
   }
 
   function setSpeed(v: number) {
@@ -283,6 +313,17 @@ function createSimStore() {
     injectFault(nodeId, 0, false);
   }
 
+  // Sever or restore an edge (src → dst). The worker is fire-and-forget —
+  // the engine snapshot will echo the new partition set on the next tick
+  // and overwrite partitionedEdgeKeys, so we don't predict the state here.
+  function partitionEdge(src: string, dst: string, on: boolean) {
+    worker?.postMessage({ type: 'partitionEdge', src, dst, on });
+  }
+
+  function isEdgePartitioned(src: string, dst: string): boolean {
+    return partitionedEdgeKeys[`${src}->${dst}`] === true;
+  }
+
   return {
     get state() {
       return state;
@@ -311,6 +352,12 @@ function createSimStore() {
     get activeFaultByNode() {
       return activeFaultByNode;
     },
+    get partitionedEdgeKeys() {
+      return partitionedEdgeKeys;
+    },
+    get faultLog() {
+      return faultLog;
+    },
     start,
     pause,
     resume,
@@ -322,7 +369,9 @@ function createSimStore() {
     injectFault,
     injectFaultFor,
     setFault,
-    clearFault
+    clearFault,
+    partitionEdge,
+    isEdgePartitioned
   };
 }
 

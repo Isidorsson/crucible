@@ -22,6 +22,7 @@ declare global {
     setSpeed(v: number): number;
     setRPS(nodeId: string, rps: number): boolean;
     injectFault(nodeId: string, kind: number, on: boolean): boolean;
+    partitionEdge(src: string, dst: string, on: boolean): boolean;
     reset(): boolean;
     // Returns true on success, or a JSON error string on failure.
     addNode(nodeDefJson: string): boolean | string;

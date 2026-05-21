@@ -38,6 +38,10 @@
   const edgeKey = $derived(`${source}->${target}`);
   const flow = $derived(sim.edgeFlowByKey[edgeKey] ?? 0);
   const flowHistory = $derived(sim.edgeHistory[edgeKey] ?? []);
+  // Severed via chaos. Drives a distinct visual (red dashed, no packets,
+  // no halo) so the user can see a partition at a glance — separate from
+  // a quiet link, which is grey/dashed but at low opacity.
+  const partitioned = $derived(sim.partitionedEdgeKeys[edgeKey] === true);
   // Target-node p99 piggybacks on the edge label so the link surfaces both
   // throughput and tail latency without forcing the reader to fixate on
   // node bodies.
@@ -72,13 +76,19 @@
   const stroke = $derived(STROKES[tier]);
 
   const intensity = $derived(Math.min(1, Math.log10(flow + 1) / 4));
+  // Severed link is drawn at the partition palette, regardless of flow.
+  const PARTITION_STROKE = '#f85149';
+  const renderStroke = $derived(partitioned ? PARTITION_STROKE : stroke);
   const strokeWidth = $derived(1.5 + intensity * 3.5);
   const haloWidth = $derived(strokeWidth + 6);
 
   // Stroke dash pattern doubles the load encoding so the chart reads for
   // users who can't distinguish the amber/red end of the ramp. Tiers 0-1
-  // are dashed (idle, trickle), 2+ solid (real traffic).
-  const dashArray = $derived(tier <= 1 ? '6 6' : 'none');
+  // are dashed (idle, trickle), 2+ solid (real traffic). Partitioned edges
+  // get a wide-gap dash so they read as cut even at idle traffic levels.
+  const dashArray = $derived(
+    partitioned ? '2 8' : tier <= 1 ? '6 6' : 'none'
+  );
 
   const pathTuple = $derived(
     params
@@ -131,7 +141,9 @@
   // saturated link visibly outpaces a trickle. Each packet is a glowing
   // head plus a faint trail circle staggered slightly behind it for a
   // comet/ember look without needing SVG filters.
-  const showPackets = $derived(flow >= 1 && !reduceMotion);
+  // No packets cross a severed link, regardless of upstream flow — the
+  // engine drops the arrival event before it can fire the EdgeFlow bump.
+  const showPackets = $derived(!partitioned && flow >= 1 && !reduceMotion);
   const packetCount = $derived(flow < 1 ? 0 : Math.min(4, 1 + Math.floor(intensity * 3)));
   const packetDur = $derived(Math.max(0.5, 1.7 - intensity * 1.2));
   const packetRadius = $derived(2.4 + intensity * 2.2);
@@ -152,6 +164,7 @@
   }
 
   const ariaSummary = $derived.by(() => {
+    if (partitioned) return 'link partitioned, no traffic';
     const parts = [`${fmtRate(flow)} requests per second`];
     if (targetP99 > 0) parts.push(`p99 ${fmtLatency(targetP99)}`);
     if (trend === '▲') parts.push('rising');
@@ -159,11 +172,15 @@
     else parts.push('steady');
     return parts.join(', ');
   });
+
+  // Midpoint of the severed stretch, for the "PARTITION" badge.
+  const partLabelPos = $derived({ x: anchorX, y: anchorY });
 </script>
 
 <!-- Halo: wide, low-opacity stroke under the main path. Reads as a soft
-     glow without paying for an SVG <filter> blur. -->
-{#if flow >= 1}
+     glow without paying for an SVG <filter> blur. Severed link skips the
+     halo so the dashed gap reads clean. -->
+{#if flow >= 1 && !partitioned}
   <path
     d={edgePath}
     fill="none"
@@ -175,7 +192,9 @@
 <BaseEdge
   path={edgePath}
   {markerEnd}
-  style="stroke: {stroke}; stroke-width: {strokeWidth}px; opacity: {tier === 0
+  style="stroke: {renderStroke}; stroke-width: {partitioned
+    ? 2
+    : strokeWidth}px; opacity: {partitioned ? 0.85 : tier === 0
     ? 0.55
     : 0.95}; stroke-dasharray: {dashArray}; transition: stroke 220ms ease, stroke-width 220ms ease, opacity 220ms ease;"
   class={selected ? 'crucible-edge-selected' : ''}
@@ -212,7 +231,22 @@
   </g>
 {/if}
 
-{#if flow >= 1}
+{#if partitioned}
+  <!-- Severed-link marker: scissor-style "✕" badge at the path midpoint.
+       Replaces the flow card because there's no traffic to report. -->
+  <EdgeLabel
+    x={partLabelPos.x}
+    y={partLabelPos.y}
+    transparent
+    class="crucible-edge-card crucible-edge-severed"
+    aria-label={ariaSummary}
+  >
+    <span aria-hidden="true">✕</span>
+    <span>SEVERED</span>
+  </EdgeLabel>
+{/if}
+
+{#if flow >= 1 && !partitioned}
   <!-- Tether: thin line from path anchor to floated label. Drawn under
        the anchor dot so the dot caps the line cleanly. -->
   <line
@@ -335,6 +369,17 @@
   }
   :global(.crucible-edge-card .trend[data-dir='–']) {
     color: #8b949e;
+  }
+  /* Severed badge — collapses the flow card to a compact red tag. */
+  :global(.crucible-edge-card.crucible-edge-severed) {
+    gap: 6px;
+    padding: 3px 8px;
+    border-color: #f85149;
+    color: #f85149;
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.6),
+      0 0 12px rgba(248, 81, 73, 0.45);
+    font-size: 10px;
   }
   @media (prefers-reduced-motion: reduce) {
     :global(.svelte-flow .crucible-edge-selected) {
