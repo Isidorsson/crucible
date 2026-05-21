@@ -577,6 +577,67 @@ export const TEMPLATES: Template[] = [
     ]
   },
   {
+    id: 'ride-hailing',
+    label: 'Ride-Hailing Dispatch',
+    description:
+      'Riders + drivers stream location over WebSocket; dispatch workflow matches and bills.',
+    icon: Car,
+    nodes: [
+      // dual client sources
+      { kind: 'mobileClient', dx: 0, dy: 0, propsOverride: { rps: 200 } }, // riders
+      { kind: 'mobileClient', dx: 0, dy: ROW * 3, propsOverride: { rps: 600 } }, // drivers
+      // edge
+      { kind: 'loadbalancer', dx: COL, dy: ROW * 1.5 },
+      { kind: 'apiGateway', dx: COL * 2, dy: 0 },
+      { kind: 'identityProvider', dx: COL * 3, dy: -ROW },
+      // realtime location
+      { kind: 'websocketServer', dx: COL * 2, dy: ROW * 3 },
+      { kind: 'websocketServer', dx: COL * 2, dy: ROW * 4 },
+      { kind: 'redis', dx: COL * 3, dy: ROW * 3.5 }, // geo-index
+      // dispatch saga
+      { kind: 'microservice', dx: COL * 3, dy: 0 }, // dispatch entry
+      { kind: 'workflowEngine', dx: COL * 4, dy: 0 },
+      { kind: 'microservice', dx: COL * 5, dy: -ROW * 0.5 }, // matcher
+      { kind: 'microservice', dx: COL * 5, dy: ROW * 0.5 }, // pricing/ETA
+      { kind: 'thirdPartyAPI', dx: COL * 6, dy: 0 }, // payment
+      // persistence
+      { kind: 'postgres', dx: COL * 6, dy: ROW * 1.5 }, // rides
+      // analytics
+      { kind: 'kafka', dx: COL * 3, dy: ROW * 5, propsOverride: { drainRPS: 3000 } },
+      { kind: 'streamProcessor', dx: COL * 4, dy: ROW * 5 },
+      { kind: 'timeseriesDB', dx: COL * 5, dy: ROW * 5 }
+    ],
+    edges: [
+      // riders go to API path
+      { from: 0, to: 2 },
+      // drivers stream location to WS
+      { from: 1, to: 5 },
+      { from: 1, to: 6 },
+      // riders also keep a WS for trip updates
+      { from: 0, to: 5 },
+      // edge → gateway
+      { from: 2, to: 3 },
+      { from: 3, to: 4 }, // gw → idp
+      // WS publishes location into geo-index
+      { from: 5, to: 7 },
+      { from: 6, to: 7 },
+      // request a ride
+      { from: 3, to: 8 }, // gw → dispatch
+      { from: 8, to: 9 }, // dispatch → workflow
+      { from: 9, to: 10 }, // workflow → matcher
+      { from: 9, to: 11 }, // workflow → pricing
+      { from: 10, to: 7 }, // matcher reads geo-index
+      { from: 9, to: 12 }, // workflow → payment 3rd party
+      { from: 9, to: 13 }, // workflow → rides DB
+      // analytics: WS + dispatch → kafka
+      { from: 5, to: 14 },
+      { from: 6, to: 14 },
+      { from: 9, to: 14 },
+      { from: 14, to: 15 },
+      { from: 15, to: 16 }
+    ]
+  },
+  {
     id: 'observability-pipeline',
     label: 'Observability Pipeline',
     description: 'Services → Kafka → stream processor → time-series DB + warehouse.',
