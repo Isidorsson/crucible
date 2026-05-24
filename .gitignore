@@ -11,10 +11,6 @@ dist/
 .netlify/
 .vite/
 
-# bundled artifacts (rebuilt by `make sim` + toolchain copy)
-apps/web/static/sim.wasm
-apps/web/static/wasm_exec.js
-
 # go
 *.test
 *.out
